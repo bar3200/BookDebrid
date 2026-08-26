@@ -162,6 +162,7 @@ class AllDebridServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([item["name"] for item in result["audio_files"]], ["01.mp3", "02.m4b"])
         self.assertEqual(result["audio_files"][0]["source_link"], "https://alldebrid.com/f/one")
         self.assertEqual(result["audio_files"][0]["link"], "https://alldebrid.com/f/one")
+        self.assertFalse(result["chapter_scan"]["attempted"])
 
     @patch("app.m4b_chapter_service.extract_m4b_chapters")
     @patch("app.alldebrid_service.unlock_link", new_callable=AsyncMock)
@@ -179,6 +180,7 @@ class AllDebridServiceTests(unittest.IsolatedAsyncioTestCase):
         result = await alldebrid_service.list_folder_contents("42")
 
         self.assertEqual(result["audio_files"][0]["chapters"], extract.return_value["chapters"])
+        self.assertEqual(result["chapter_scan"], {"attempted": True, "count": 1, "error": None})
         unlock.assert_awaited_once_with("https://alldebrid.com/f/book")
         extract.assert_called_once_with("https://cdn.example/book.m4b")
 

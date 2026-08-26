@@ -225,7 +225,9 @@ class MainActivity : AppCompatActivity() {
             moveTaskToBack(true)
             return
         }
-        browser.evaluateJavascript("window.FreedifyAndroidNavigation?.goBack() === true") { handled ->
+        browser.evaluateJavascript(
+            "(() => { try { return window.FreedifyAndroidNavigation?.goBack() === true; } catch (_) { return false; } })()"
+        ) { handled ->
             if (handled != "true") moveTaskToBack(true)
         }
     }

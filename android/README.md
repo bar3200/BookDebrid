@@ -59,7 +59,7 @@ the first secret. Never commit the keystore or any password. Keep an encrypted,
 tested backup of the keystore and credentials: losing this signing identity
 means future APKs cannot update existing installations.
 
-Version `1.2.0` uses `versionCode` 4. Installations made from earlier workflow
+Version `1.3.0` uses `versionCode` 5. Installations made from earlier workflow
 debug artifacts have a different signature and therefore require a one-time
 uninstall before installing this release. That uninstall removes the app's
 stored settings, including the encrypted AllDebrid key. After installing this
@@ -98,6 +98,14 @@ place as long as their `versionCode` increases.
   Freedify unlocks the media URL and uses HTTP byte ranges plus Mutagen to read
   its embedded MP4 chapter table without downloading the audio payload. Those
   entries become seek-bounded chapters over one continuous stream.
+- Saved-book details provide explicit **Play from beginning**, **Refresh
+  chapters**, and chapter-list actions. Refresh uses the stored cloud magnet ID;
+  for older favorites without one, it re-uploads the exact AudiobookBay magnet
+  hash so AllDebrid can return the authoritative cached ID without guessing from
+  the torrent filename.
+- On Android, the player overflow is reduced to labeled audiobook actions and
+  Back closes the topmost menu or dialog before backgrounding the app. Tapping
+  an audiobook chapter title opens its book instead of launching another search.
 - Cleartext networking is disabled except for `127.0.0.1`/`localhost`; external
   AllDebrid and content requests use HTTPS.
 

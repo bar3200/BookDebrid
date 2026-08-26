@@ -18,7 +18,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Orbitron:wght@400;700;900&family=Permanent+Marker&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/styles.css?t=1787760000">
+    <link rel="stylesheet" href="/static/styles.css?t=1787760002">
     <!-- Google API for Drive sync -->
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="https://apis.google.com/js/api.js" async defer></script>
@@ -582,9 +582,11 @@
                         <p id="book-info-author" class="book-info-author">Author</p>
                         <div id="book-info-badges" class="book-info-badges"></div>
                         <div class="book-info-actions">
-                            <button id="book-info-play-btn" class="album-action-btn primary">▶ Play</button>
-                            <button id="book-info-chapters-btn" class="album-action-btn">📑 Chapters</button>
-                            <button id="book-info-delete-btn" class="album-action-btn danger hidden" style="background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.2);">🗑 Delete from Cloud</button>
+                            <button id="book-info-play-btn" class="album-action-btn primary">Play</button>
+                            <button id="book-info-start-btn" class="album-action-btn hidden">Start from beginning</button>
+                            <button id="book-info-chapters-btn" class="album-action-btn">Chapters</button>
+                            <button id="book-info-refresh-btn" class="album-action-btn">Refresh chapters</button>
+                            <button id="book-info-delete-btn" class="album-action-btn danger hidden" style="background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.2);">Delete from AllDebrid</button>
                         </div>
                     </div>
                 </div>
@@ -640,24 +642,23 @@
                 <span id="duration" class="time">0:00</span>
             </div>
             
-            <!-- More Menu (Popup) - 2x5 Grid -->
+            <!-- More Menu -->
             <div id="player-more-menu" class="player-more-menu hidden">
                 <div class="more-menu-grid four-col">
-                    <!-- Row 1 -->
-                    <button id="shuffle-queue-btn" class="control-btn" title="Shuffle Queue">⤭</button>
-                    <button id="repeat-btn" class="control-btn" title="Repeat: Off">⟳</button>
-                    <button id="download-current-btn" class="control-btn" title="Download">⬇</button>
-                    <button id="queue-btn" class="control-btn queue-toggle" title="Queue">☰</button>
-                    <!-- Row 2 -->
-                    <button id="mute-btn" class="control-btn volume-btn" title="Mute">🔊</button>
-                    <button id="eq-toggle-btn" class="control-btn eq-btn" title="Equalizer">🎛️</button>
-                    <button id="ai-radio-btn" class="control-btn ai-radio-btn" title="AI Radio">📻</button>
-                    <button id="mini-player-btn" class="control-btn" title="Popout Winamp Player">⧉</button>
-                    <!-- Row 3 -->
-                    <button id="add-to-playlist-btn" class="control-btn" title="Add to Playlist">🩷</button>
-                    <button id="lyrics-btn" class="control-btn lyrics-btn" title="Lyrics">📝</button>
-                    <button id="video-btn" class="control-btn" title="Music Video">🎬</button>
-                    <button id="menu-visualizer-btn" class="control-btn" title="Visualizer">🌈</button>
+                    <button id="player-book-btn" class="control-btn android-audiobook-action" title="Open book and chapters"><span aria-hidden="true">☷</span><span class="player-menu-label">Book</span></button>
+                    <button id="restart-chapter-btn" class="control-btn android-audiobook-action" title="Restart current chapter"><span aria-hidden="true">↤</span><span class="player-menu-label">Restart chapter</span></button>
+                    <button id="queue-btn" class="control-btn queue-toggle android-essential-action" title="Open queue"><span aria-hidden="true">☰</span><span class="player-menu-label">Queue</span></button>
+                    <button id="repeat-btn" class="control-btn android-essential-action" title="Repeat: Off"><span aria-hidden="true">⟳</span><span class="player-menu-label">Repeat</span></button>
+                    <button id="shuffle-queue-btn" class="control-btn" title="Shuffle queue"><span aria-hidden="true">⤭</span><span class="player-menu-label">Shuffle</span></button>
+                    <button id="download-current-btn" class="control-btn" title="Download current track"><span aria-hidden="true">⬇</span><span class="player-menu-label">Download</span></button>
+                    <button id="mute-btn" class="control-btn volume-btn" title="Mute"><span aria-hidden="true">🔊</span><span class="player-menu-label">Mute</span></button>
+                    <button id="eq-toggle-btn" class="control-btn eq-btn" title="Equalizer"><span aria-hidden="true">🎛️</span><span class="player-menu-label">Equalizer</span></button>
+                    <button id="ai-radio-btn" class="control-btn ai-radio-btn" title="AI Radio"><span aria-hidden="true">📻</span><span class="player-menu-label">AI Radio</span></button>
+                    <button id="mini-player-btn" class="control-btn" title="Popout Winamp player"><span aria-hidden="true">⧉</span><span class="player-menu-label">Mini player</span></button>
+                    <button id="add-to-playlist-btn" class="control-btn" title="Add to playlist"><span aria-hidden="true">♡</span><span class="player-menu-label">Playlist</span></button>
+                    <button id="lyrics-btn" class="control-btn lyrics-btn" title="Lyrics"><span aria-hidden="true">≡</span><span class="player-menu-label">Lyrics</span></button>
+                    <button id="video-btn" class="control-btn" title="Music video"><span aria-hidden="true">▣</span><span class="player-menu-label">Video</span></button>
+                    <button id="menu-visualizer-btn" class="control-btn" title="Visualizer"><span aria-hidden="true">◒</span><span class="player-menu-label">Visualizer</span></button>
                 </div>
                 <!-- Volume slider inside menu for mobile compactness -->
                 <div class="more-menu-volume">
@@ -1086,6 +1087,6 @@
     <script src="static/jsmediatags.min.js"></script>
     <script src="https://apis.google.com/js/api.js"></script>
     <script src="https://accounts.google.com/gsi/client"></script>
-    <script type="module" src="/static/app.js?t=1787760001"></script>
+    <script type="module" src="/static/app.js?t=1787760002"></script>
 </body>
 </html>

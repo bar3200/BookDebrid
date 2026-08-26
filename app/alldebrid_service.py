@@ -188,11 +188,13 @@ async def list_folder_contents(magnet_id: str):
             item["type"] = "file"
             audio_files.append(item)
     audio_files.sort(key=lambda item: _natural_path_key(item["path"]))
+    chapter_scan = {"attempted": False, "count": 0, "error": None}
 
     # AllDebrid's file API cannot see chapters embedded inside a single M4B.
     # Unlock that file and let Mutagen inspect its small MP4 metadata ranges.
     # Any metadata failure is non-fatal: the M4B remains playable as one track.
     if len(audio_files) == 1 and audio_files[0]["name"].lower().endswith(".m4b"):
+        chapter_scan["attempted"] = True
         try:
             from app.m4b_chapter_service import extract_m4b_chapters
 
@@ -201,14 +203,17 @@ async def list_folder_contents(magnet_id: str):
             if chapter_data["chapters"]:
                 audio_files[0]["chapters"] = chapter_data["chapters"]
                 audio_files[0]["duration"] = chapter_data["duration"]
+                chapter_scan["count"] = len(chapter_data["chapters"])
         except Exception as exc:
             logger.warning("Could not read embedded M4B chapters: %s", exc)
+            chapter_scan["error"] = "Embedded chapter metadata could not be read"
 
     return {
         "status": "success",
         "audio_files": audio_files,
         "folders": [],
         "name": magnet.get("filename", "AllDebrid magnet"),
+        "chapter_scan": chapter_scan,
     }
 
 

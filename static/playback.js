@@ -208,8 +208,11 @@ export function updatePlayerUI() {
     const track = state.queue[state.currentIndex];
 
     playerBar.classList.remove('hidden');
+    document.documentElement.classList.toggle('audiobook-playing', track.source === 'audiobook');
     playerTitle.textContent = track.name;
+    playerTitle.title = track.source === 'audiobook' ? 'Open book' : 'Search for this track';
     playerArtist.textContent = track.artists || '-';
+    playerArtist.title = track.source === 'audiobook' ? 'Open book' : 'Search artist';
 
     if (visualizerActive && showVisualizerInfoBriefly) {
         showVisualizerInfoBriefly();
@@ -1051,6 +1054,8 @@ if (fsProgressBar) {
 // More menu
 const moreControlsBtn = $('#more-controls-btn');
 const playerMoreMenu = $('#player-more-menu');
+const playerBookBtn = $('#player-book-btn');
+const restartChapterBtn = $('#restart-chapter-btn');
 
 if (moreControlsBtn && playerMoreMenu) {
     moreControlsBtn.addEventListener('click', (e) => {
@@ -1067,6 +1072,22 @@ if (moreControlsBtn && playerMoreMenu) {
     });
 }
 
+playerBookBtn?.addEventListener('click', () => {
+    const track = state.queue[state.currentIndex];
+    if (track?.source === 'audiobook') emit('openAudiobookFromPlayer', track);
+    playerMoreMenu?.classList.add('hidden');
+});
+
+restartChapterBtn?.addEventListener('click', () => {
+    const track = state.queue[state.currentIndex];
+    if (!track || track.source !== 'audiobook') return;
+    clearEpisodePosition(track.id);
+    delete track._resumeAt;
+    getActivePlayer().currentTime = chapterStart(track);
+    showToast('Restarted this chapter');
+    playerMoreMenu?.classList.add('hidden');
+});
+
 // Nav links
 playerTitle.classList.add('clickable-link');
 playerArtist.classList.add('clickable-link');
@@ -1075,6 +1096,10 @@ playerTitle.addEventListener('click', () => {
     if (state.currentIndex >= 0 && !fullscreenPlayer.classList.contains('hidden')) toggleFullScreen();
     if (state.currentIndex >= 0) {
         const track = state.queue[state.currentIndex];
+        if (track.source === 'audiobook') {
+            emit('openAudiobookFromPlayer', track);
+            return;
+        }
         if (performSearch) performSearch(track.name + " " + track.artists);
     }
 });
@@ -1089,8 +1114,13 @@ if (playerAlbum) {
 }
 
 playerArtist.addEventListener('click', () => {
-    if (state.currentIndex >= 0 && performSearch) {
-        performSearch(state.queue[state.currentIndex].artists);
+    if (state.currentIndex >= 0) {
+        const track = state.queue[state.currentIndex];
+        if (track.source === 'audiobook') {
+            emit('openAudiobookFromPlayer', track);
+        } else if (performSearch) {
+            performSearch(track.artists);
+        }
     }
 });
 

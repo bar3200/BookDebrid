@@ -344,6 +344,14 @@ window.FreedifyAndroidMedia = {
 
 window.FreedifyAndroidNavigation = {
     goBack: () => {
+        const transientPanels = ['player-more-menu', 'search-more-menu', 'eq-panel'];
+        for (const panelId of transientPanels) {
+            const panel = document.getElementById(panelId);
+            if (panel && !panel.classList.contains('hidden')) {
+                panel.classList.add('hidden');
+                return true;
+            }
+        }
         const closeTargets = [
             ['visualizer-overlay', 'visualizer-close'],
             ['fullscreen-player', 'fs-close-btn'],
@@ -361,6 +369,7 @@ window.FreedifyAndroidNavigation = {
             ['setlist-modal', 'setlist-close-btn'],
             ['drive-sync-modal', 'drive-modal-close-top'],
             ['concert-modal', 'concert-modal-close'],
+            ['download-modal', 'download-cancel-btn'],
         ];
         for (const [containerId, closeId] of closeTargets) {
             const container = document.getElementById(containerId);
@@ -368,6 +377,21 @@ window.FreedifyAndroidNavigation = {
                 document.getElementById(closeId)?.click();
                 return true;
             }
+        }
+        // Keep Android Back safe for any newer modal which has not yet been
+        // added to the explicit list. Prefer its close/cancel control so the
+        // component can run cleanup; hiding is the final fallback.
+        const visibleModal = document.querySelector(
+            '.modal:not(.hidden), .album-modal:not(.hidden), .book-info-modal:not(.hidden), ' +
+            '.podcast-modal:not(.hidden), .settings-modal:not(.hidden), .ai-modal:not(.hidden)'
+        );
+        if (visibleModal) {
+            const closeControl = visibleModal.querySelector(
+                '[id$="-close"], [id$="-close-btn"], [id$="-cancel-btn"], .modal-close, .album-modal-close'
+            );
+            if (closeControl) closeControl.click();
+            else visibleModal.classList.add('hidden');
+            return true;
         }
         if (queueSection && !queueSection.classList.contains('hidden')) {
             document.getElementById('queue-close')?.click();
