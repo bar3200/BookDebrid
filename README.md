@@ -28,6 +28,19 @@ Open [http://localhost:8000](http://localhost:8000) and start streaming! 🎵
 
 > **ARM64 Supported:** Works on Raspberry Pi, Apple Silicon (M1/M2/M3), and ARM servers!
 
+## 📱 Self-contained Android APK (AllDebrid audiobooks)
+
+The `android/` project packages the existing FastAPI backend and web UI into a
+single APK with Chaquopy. It runs only on `127.0.0.1` inside the app, opens the
+UI in a WebView, and stores the AllDebrid API key encrypted with Android
+Keystore. No separately hosted Freedify server is required for the AllDebrid
+audiobook flow.
+
+Download the `freedify-debug-apk` artifact from the **Build Android Debug APK**
+GitHub Actions workflow, or build it locally with `cd android && ./gradlew
+:app:assembleDebug`. See [android/README.md](android/README.md) for setup,
+security details, and the Android-specific limitations.
+
 ## ✨ Features
 
 ### 🎧 HiFi & Hi-Res Streaming

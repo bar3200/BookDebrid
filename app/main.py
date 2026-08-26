@@ -96,6 +96,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
+def _model_to_dict(model: BaseModel) -> dict:
+    """Support both Pydantic 2 on servers and the Android-compatible v1 wheel."""
+    if hasattr(model, "model_dump"):
+        return model.model_dump()
+    return model.dict()
+
 # ============================================================
 # Stream URL Cache — avoids re-running the full API chain on seek/range requests
 # Key: isrc, Value: (stream_url, metadata, timestamp)
@@ -143,29 +150,35 @@ async def lifespan(app: FastAPI):
     # Initial cache cleanup
     await cleanup_cache()
     
-    # Pre-warm Tidal API list at startup (so first play isn't slow)
-    try:
-        await audio_service.update_tidal_apis()
-    except Exception as e:
-        logger.warning(f"Failed to pre-warm Tidal APIs at startup: {e}")
+    android_embedded = os.environ.get("ANDROID_EMBEDDED") == "1"
+
+    # Desktop/server-only startup work. The Android APK is audiobook-focused,
+    # and delaying localhost startup for unrelated network probes hurts first run.
+    if not android_embedded:
+        try:
+            await audio_service.update_tidal_apis()
+        except Exception as e:
+            logger.warning(f"Failed to pre-warm Tidal APIs at startup: {e}")
     
     # Start periodic cleanup task
     cleanup_task = asyncio.create_task(periodic_cleanup(30))
     
     # Start auto-ping task to prevent Render spin-down
-    ping_task = asyncio.create_task(keep_awake_ping())
+    ping_task = None if android_embedded else asyncio.create_task(keep_awake_ping())
 
     # Periodically purge expired stream URL cache entries
     stream_cache_task = asyncio.create_task(_purge_expired_stream_urls())
 
     # Start mDNS advertising for cross-device sync
-    await sync_service.start_advertising()
+    if not android_embedded:
+        await sync_service.start_advertising()
 
     yield
 
     # Cleanup on shutdown
     cleanup_task.cancel()
-    ping_task.cancel()
+    if ping_task:
+        ping_task.cancel()
     stream_cache_task.cancel()
     await deezer_service.close()
     await live_show_service.close()
@@ -174,7 +187,8 @@ async def lifespan(app: FastAPI):
     await podcast_service.close()
     import app.tidal_service as tidal_service
     await tidal_service.close()
-    await sync_service.stop_advertising()
+    if not android_embedded:
+        await sync_service.stop_advertising()
     logger.info("Server shutdown complete.")
 
 
@@ -1256,7 +1270,7 @@ async def get_audio_features_batch(request: AudioFeaturesBatchRequest):
 async def generate_setlist(request: SetlistRequest):
     """Generate AI-optimized DJ setlist ordering."""
     try:
-        tracks = [t.model_dump() for t in request.tracks]
+        tracks = [_model_to_dict(t) for t in request.tracks]
         result = await dj_service.generate_setlist(tracks, request.style)
         return result
     except Exception as e:
@@ -1314,8 +1328,8 @@ class AIRadioRequest(BaseModel):
 async def generate_ai_radio_recommendations(request: AIRadioRequest):
     """Generate AI Radio recommendations based on seed track or mood."""
     try:
-        seed = request.seed_track.model_dump() if request.seed_track else None
-        queue = [t.model_dump() for t in request.current_queue] if request.current_queue else []
+        seed = _model_to_dict(request.seed_track) if request.seed_track else None
+        queue = [_model_to_dict(t) for t in request.current_queue] if request.current_queue else []
         
         result = await ai_radio_service.generate_recommendations(
             seed_track=seed,
@@ -1571,7 +1585,7 @@ async def upload_to_drive(request: UploadToDriveRequest):
 # ========== STATIC FILES ==========
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-STATIC_DIR = os.path.join(BASE_DIR, "static")
+STATIC_DIR = os.environ.get("FREEDIFY_STATIC_DIR", os.path.join(BASE_DIR, "static"))
 
 if os.path.exists(STATIC_DIR):
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")

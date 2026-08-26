@@ -11,7 +11,6 @@ from fastapi import HTTPException
 
 
 logger = logging.getLogger(__name__)
-ALLDEBRID_API_KEY = os.getenv("ALLDEBRID_API_KEY")
 API_BASE_URL = "https://api.alldebrid.com"
 APP_NAME = "Freedify"
 AUDIO_EXTENSIONS = (".mp3", ".m4b", ".m4a", ".flac", ".wav", ".ogg", ".aac", ".opus")
@@ -23,13 +22,14 @@ async def _make_request(
     params: dict | None = None,
     data: dict | None = None,
 ):
-    if not ALLDEBRID_API_KEY:
+    api_key = os.getenv("ALLDEBRID_API_KEY")
+    if not api_key:
         raise HTTPException(
             status_code=500,
             detail="AllDebrid API key is missing. Add ALLDEBRID_API_KEY to your .env file.",
         )
 
-    headers = {"Authorization": f"Bearer {ALLDEBRID_API_KEY}"}
+    headers = {"Authorization": f"Bearer {api_key}"}
     query_params = {"agent": APP_NAME}
     if params:
         query_params.update(params)

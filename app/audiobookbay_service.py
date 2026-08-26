@@ -4,14 +4,9 @@ from fastapi import HTTPException
 import re
 import asyncio
 import logging
+import os
 import shutil
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from webdriver_manager.chrome import ChromeDriverManager
+import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +17,13 @@ MAX_RETRIES = 2
 
 def _create_driver():
     """Create a memory-optimized headless Chrome driver for constrained environments (Render, Docker)."""
+    # Keep desktop browser dependencies out of the Android APK. They are loaded
+    # only when the normal server path actually uses Selenium.
+    from selenium import webdriver
+    from selenium.webdriver.chrome.options import Options
+    from selenium.webdriver.chrome.service import Service
+    from webdriver_manager.chrome import ChromeDriverManager
+
     options = Options()
     options.add_argument('--headless=new')
     options.add_argument('--no-sandbox')
@@ -70,6 +72,10 @@ def _create_driver():
 
 def _fetch_page_with_retry(url: str, wait_selector: str | None = None) -> str:
     """Fetch a page with Selenium, retrying on timeout. Returns page source HTML."""
+    from selenium.webdriver.common.by import By
+    from selenium.webdriver.support.ui import WebDriverWait
+    from selenium.webdriver.support import expected_conditions as EC
+
     last_error = None
     for attempt in range(1, MAX_RETRIES + 1):
         driver = None
@@ -102,6 +108,24 @@ def _fetch_page_with_retry(url: str, wait_selector: str | None = None) -> str:
     raise last_error
 
 
+def _fetch_page_http(url: str) -> str:
+    """Android-compatible fallback where desktop ChromeDriver is unavailable."""
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36"
+        ),
+        "Accept-Language": "en-US,en;q=0.9",
+    }
+    with httpx.Client(headers=headers, follow_redirects=True, timeout=45.0) as client:
+        # Establish any cookies which AudiobookBay sets on its home page first.
+        if url != ABB_BASE_URL:
+            client.get(ABB_BASE_URL)
+        response = client.get(url)
+        response.raise_for_status()
+        return response.text
+
+
 def extract_slug_from_url(url: str):
     """
     Extract the audiobook slug from a full AudiobookBay URL.
@@ -128,7 +152,28 @@ async def search_audiobooks(query: str, page: int = 1):
     """
     loop = asyncio.get_event_loop()
 
+    if os.environ.get("ANDROID_EMBEDDED") == "1":
+        encoded = urllib.parse.quote_plus(query)
+        page_path = f"/page/{page}" if page > 1 else ""
+        search_url = f"{ABB_BASE_URL}{page_path}/?s={encoded}"
+        try:
+            html_content = await loop.run_in_executor(None, _fetch_page_http, search_url)
+        except Exception as e:
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    "AudiobookBay could not be reached from Android. "
+                    "You can still paste a direct AudiobookBay book URL. "
+                    f"Details: {e}"
+                ),
+            )
+        return _parse_search_results(html_content)
+
     def do_search(search_query: str, target_page: int):
+        from selenium.webdriver.common.by import By
+        from selenium.webdriver.support.ui import WebDriverWait
+        from selenium.webdriver.support import expected_conditions as EC
+
         # ABB ignores the ?s= URL param entirely, so we MUST use form submission
         # for ALL pages. For page > 1, we submit the form first, then navigate
         # to the pagination URL within the same browser session (preserves cookies).
@@ -190,6 +235,10 @@ async def search_audiobooks(query: str, page: int = 1):
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Failed to fetch from AudiobookBay via Selenium: {str(e)}")
 
+    return _parse_search_results(html_content)
+
+
+def _parse_search_results(html_content: str):
     soup = BeautifulSoup(html_content, 'html.parser')
     results = []
 
@@ -244,12 +293,14 @@ async def get_audiobook_details(slug: str):
     loop = asyncio.get_event_loop()
 
     def do_fetch(target_url):
+        if os.environ.get("ANDROID_EMBEDDED") == "1":
+            return _fetch_page_http(target_url)
         return _fetch_page_with_retry(target_url, wait_selector='div.postContent')
 
     try:
         html_content = await loop.run_in_executor(None, do_fetch, url)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Failed to fetch details from AudiobookBay via Selenium: {str(e)}")
+        raise HTTPException(status_code=502, detail=f"Failed to fetch details from AudiobookBay: {str(e)}")
 
     soup = BeautifulSoup(html_content, 'html.parser')
 

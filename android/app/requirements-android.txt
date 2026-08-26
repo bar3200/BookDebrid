@@ -1,0 +1,17 @@
+# Android-compatible subset needed to start app.main and run the audiobook flow.
+# Desktop-only Selenium/Chrome, FFmpeg binaries, Supabase, Gemini and zeroconf
+# are intentionally omitted. The normal server requirements remain unchanged.
+fastapi==0.115.12
+pydantic==1.10.26
+uvicorn==0.34.2
+httpx==0.28.1
+aiofiles==24.1.0
+mutagen==1.47.0
+pyotp==2.9.0
+requests==2.32.3
+python-dotenv==1.1.0
+yt-dlp==2025.6.30
+ytmusicapi==1.10.3
+packaging==25.0
+beautifulsoup4==4.13.4
+PyJWT==2.10.1

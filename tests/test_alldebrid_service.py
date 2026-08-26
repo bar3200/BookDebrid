@@ -1,7 +1,7 @@
 import unittest
 import sys
 import types
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 # Keep these focused adapter tests runnable even when the full application
 # requirements have not been installed in the checkout environment.
@@ -25,6 +25,27 @@ from app import alldebrid_service
 
 
 class AllDebridServiceTests(unittest.IsolatedAsyncioTestCase):
+    async def test_request_reads_api_key_at_call_time(self):
+        response = MagicMock()
+        response.json.return_value = {"status": "success", "data": {"ok": True}}
+        client = AsyncMock()
+        client.get.return_value = response
+
+        context = MagicMock()
+        context.__aenter__ = AsyncMock(return_value=client)
+        context.__aexit__ = AsyncMock(return_value=None)
+
+        with patch.dict("os.environ", {"ALLDEBRID_API_KEY": "runtime-key"}), patch(
+            "app.alldebrid_service.httpx.AsyncClient", return_value=context
+        ):
+            result = await alldebrid_service._make_request("/v4/test")
+
+        self.assertEqual(result, {"ok": True})
+        self.assertEqual(
+            client.get.await_args.kwargs["headers"],
+            {"Authorization": "Bearer runtime-key"},
+        )
+
     def test_flatten_files_preserves_nested_paths(self):
         tree = [
             {

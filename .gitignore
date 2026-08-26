@@ -38,6 +38,12 @@ ENV/
 *.swo
 *.bak
 
+# Android / Gradle
+.gradle/
+local.properties
+*.apk
+*.aab
+
 # Cache
 cache/
 *.cache
@@ -61,4 +67,3 @@ test_*.py
 CLAUDE.md
 PLAN.md
 docs/
-
