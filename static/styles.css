@@ -460,6 +460,28 @@ html.android-app body {
     font-size: 1rem;
 }
 
+.android-app .player-controls-primary #play-btn {
+    padding: 0;
+    line-height: 0;
+    transform: none;
+}
+
+.android-app #play-btn .playback-icon {
+    display: block;
+    width: 23px;
+    height: 23px;
+}
+
+.android-app #play-btn .playback-icon-play {
+    transform: translateX(1px);
+}
+
+.android-app #more-controls-btn .player-options-icon {
+    display: block;
+    width: 22px;
+    height: 22px;
+}
+
 .android-app .player-controls-primary #prev-btn,
 .android-app .player-controls-primary #fs-toggle-btn {
     display: none;
@@ -472,7 +494,8 @@ html.android-app body {
 .android-app .player-more-menu {
     right: 10px;
     bottom: calc(105px + var(--safe-bottom));
-    width: min(330px, calc(100vw - 20px)) !important;
+    width: min(286px, calc(100vw - 20px)) !important;
+    padding: 10px;
     border: 1px solid rgba(255, 255, 255, 0.1);
     background: rgba(31, 31, 47, 0.97);
     backdrop-filter: blur(18px);
@@ -491,8 +514,8 @@ html.android-app body {
 }
 
 .android-app .player-more-menu .more-menu-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-    gap: 8px !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 6px !important;
     padding: 0;
     margin: 0;
 }
@@ -508,25 +531,35 @@ html.android-app body {
 .android-app.music-playing .player-more-menu .android-music-action {
     display: flex;
     width: 100%;
-    height: 56px;
-    padding: 8px 10px;
-    gap: 7px;
-    flex-direction: column;
-    border-radius: 13px;
+    height: 52px;
+    padding: 0 14px;
+    gap: 14px;
+    flex-direction: row;
+    justify-content: flex-start;
+    border-radius: 12px;
     background: rgba(255, 255, 255, 0.055);
     font-size: 1.05rem;
 }
 
 .android-app .player-more-menu .player-menu-label {
     display: block;
-    max-width: 100%;
-    overflow: hidden;
+    flex: 1;
+    overflow: visible;
     color: var(--text-secondary);
-    font-size: 0.7rem;
+    font-size: 0.9rem;
     font-weight: 600;
-    line-height: 1;
-    text-overflow: ellipsis;
+    line-height: 1.2;
+    text-align: left;
+    text-overflow: clip;
     white-space: nowrap;
+}
+
+.android-app .player-more-menu .control-btn > [aria-hidden="true"] {
+    width: 24px;
+    flex: 0 0 24px;
+    font-size: 1.2rem;
+    line-height: 1;
+    text-align: center;
 }
 
 .android-app .player-more-menu .more-menu-volume {

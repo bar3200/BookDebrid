@@ -59,7 +59,7 @@ the first secret. Never commit the keystore or any password. Keep an encrypted,
 tested backup of the keystore and credentials: losing this signing identity
 means future APKs cannot update existing installations.
 
-Version `1.3.3` uses `versionCode` 8. Installations made from earlier workflow
+Version `1.3.4` uses `versionCode` 9. Installations made from earlier workflow
 debug artifacts have a different signature and therefore require a one-time
 uninstall before installing this release. That uninstall removes the app's
 stored settings, including the encrypted AllDebrid key. After installing this

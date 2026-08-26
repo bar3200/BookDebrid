@@ -633,10 +633,17 @@
                 
                 <div class="player-controls-primary">
                     <button id="prev-btn" class="control-btn" title="Previous">⏮</button>
-                    <button id="play-btn" class="control-btn play-btn" title="Play/Pause">▶</button>
+                    <button id="play-btn" class="control-btn play-btn" title="Play" aria-label="Play">
+                        <svg class="playback-icon playback-icon-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10-6.5z" fill="currentColor"></path></svg>
+                    </button>
                     <button id="next-btn" class="control-btn" title="Next">⏭</button>
                     <button id="fs-toggle-btn" class="control-btn" title="Full Screen">⤢</button>
-                    <button id="more-controls-btn" class="control-btn" title="More Options">⋮</button>
+                    <button id="more-controls-btn" class="control-btn" title="Player options" aria-label="Player options">
+                        <svg class="player-options-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                            <path d="M4 7h10"></path><path d="M18 7h2"></path><circle cx="16" cy="7" r="2"></circle>
+                            <path d="M4 17h2"></path><path d="M10 17h10"></path><circle cx="8" cy="17" r="2"></circle>
+                        </svg>
+                    </button>
                 </div>
             </div>
 
@@ -1093,13 +1100,13 @@
     <script src="https://apis.google.com/js/api.js"></script>
     <script src="https://accounts.google.com/gsi/client"></script>
     <script type="module">
-        const appUrl = '/static/app.js?t=1787760006';
+        const appUrl = '/static/app.js?t=1787760007';
         const isAndroidApp = document.documentElement.classList.contains('android-app');
 
         async function prepareAndroidRuntime() {
             if (!isAndroidApp || !('serviceWorker' in navigator)) return;
 
-            const cleanupVersion = 'freedify-android-cache-cleanup-v8';
+            const cleanupVersion = 'freedify-android-cache-cleanup-v9';
             const hadController = Boolean(navigator.serviceWorker.controller);
             try {
                 const registrations = await navigator.serviceWorker.getRegistrations();

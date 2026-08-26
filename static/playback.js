@@ -949,7 +949,15 @@ progressBar.addEventListener('input', (e) => {
 });
 
 export function updatePlayButton() {
-    playBtn.textContent = state.isPlaying ? '⏸' : '▶';
+    if (state.isPlaying) {
+        playBtn.innerHTML = '<svg class="playback-icon playback-icon-pause" viewBox="0 0 24 24" aria-hidden="true"><rect x="6.5" y="5" width="4" height="14" rx="1" fill="currentColor"></rect><rect x="13.5" y="5" width="4" height="14" rx="1" fill="currentColor"></rect></svg>';
+        playBtn.title = 'Pause';
+        playBtn.setAttribute('aria-label', 'Pause');
+    } else {
+        playBtn.innerHTML = '<svg class="playback-icon playback-icon-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10-6.5z" fill="currentColor"></path></svg>';
+        playBtn.title = 'Play';
+        playBtn.setAttribute('aria-label', 'Play');
+    }
     updateFSPlayBtn();
 }
 
