@@ -52,6 +52,7 @@ from app.concert_service import concert_service
 from app.sync_service import sync_service
 from app.audiobookbay_service import search_audiobooks, get_audiobook_details, is_audiobookbay_url, extract_slug_from_url
 from app.premiumize_service import create_transfer, check_transfer_status, list_folder_contents, search_my_files, delete_item
+from app import alldebrid_service, premiumize_service
 from app.soundcloud_service import search_tracks as soundcloud_search_tracks
 
 from app.cache import (
@@ -842,8 +843,16 @@ async def stream_audio(
         
         # 1. Resolve Target Stream URL (Direct or via yt-dlp)
         
+        # AllDebrid file links are stable, while their unlocked CDN links expire.
+        # Resolve the stable link for every playback to always get a fresh URL.
+        if isrc.startswith("ALLDEBRID:"):
+            encoded_link = isrc.replace("ALLDEBRID:", "", 1)
+            target_stream_url = await alldebrid_service.resolve_playable_link(
+                encoded_link
+            )
+
         # Handle Imported Links (LINK:)
-        if isrc.startswith("LINK:"):
+        elif isrc.startswith("LINK:"):
             import base64
             from urllib.parse import urlparse
             try:
@@ -1861,7 +1870,122 @@ async def get_goodreads_book_info(
         logger.error(f"Goodreads lookup error: {e}")
         return {"found": False, "message": str(e)}
 
-# ========== AUDIOBOOKS & PREMIUMIZE ENDPOINTS ==========
+# ========== AUDIOBOOKS & DEBRID ENDPOINTS ==========
+
+DEBRID_SERVICES = {
+    "premiumize": premiumize_service,
+    "alldebrid": alldebrid_service,
+}
+
+
+def _configured_debrid_providers() -> list[str]:
+    providers = []
+    if os.getenv("PREMIUMIZE_API_KEY"):
+        providers.append("premiumize")
+    if os.getenv("ALLDEBRID_API_KEY"):
+        providers.append("alldebrid")
+
+    requested = os.getenv("AUDIOBOOK_DEBRID_PROVIDER", "").strip().lower()
+    if providers:
+        return providers
+    # With no keys configured, preserve the legacy Premiumize default unless
+    # the operator explicitly selected AllDebrid (whose missing-key error will
+    # then point to the correct variable).
+    return [requested] if requested in DEBRID_SERVICES else ["premiumize"]
+
+
+def _get_debrid_service(provider: str):
+    service = DEBRID_SERVICES.get(provider.lower())
+    if not service:
+        raise HTTPException(status_code=404, detail=f"Unsupported debrid provider: {provider}")
+    return service
+
+
+@app.get("/api/debrid/config")
+async def get_debrid_config():
+    """Return configured audiobook providers without exposing credentials."""
+    providers = _configured_debrid_providers()
+    requested = os.getenv("AUDIOBOOK_DEBRID_PROVIDER", "").strip().lower()
+    default_provider = requested if requested in providers else providers[0]
+    return {
+        "default_provider": default_provider,
+        "providers": providers,
+        "labels": {"premiumize": "Premiumize", "alldebrid": "AllDebrid"},
+        "web_urls": {
+            "premiumize": "https://www.premiumize.me/files",
+            "alldebrid": "https://alldebrid.com/magnets/",
+        },
+    }
+
+
+@app.post("/api/debrid/{provider}/transfer")
+async def start_debrid_transfer(provider: str, request: Request):
+    try:
+        data = await request.json()
+        magnet_link = data.get("magnet_link")
+        if not magnet_link:
+            raise HTTPException(status_code=400, detail="magnet_link is required")
+        return await _get_debrid_service(provider).create_transfer(magnet_link)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("%s transfer error: %s", provider, e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/debrid/{provider}/transfer/{transfer_id}")
+async def get_debrid_transfer_status(provider: str, transfer_id: str):
+    try:
+        status = await _get_debrid_service(provider).check_transfer_status(transfer_id)
+        return {"transfer": status}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("%s transfer status error: %s", provider, e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/debrid/{provider}/files/{item_id}")
+async def get_debrid_files(provider: str, item_id: str):
+    try:
+        return await _get_debrid_service(provider).list_folder_contents(item_id)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("%s file listing error: %s", provider, e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/debrid/{provider}/search")
+async def search_debrid_files(
+    provider: str, q: str = Query(..., description="Query to search your cloud")
+):
+    try:
+        results = await _get_debrid_service(provider).search_my_files(q)
+        return {"results": results}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("%s search error: %s", provider, e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/debrid/{provider}/delete")
+async def delete_debrid_item(provider: str, request: Request):
+    try:
+        data = await request.json()
+        item_id = data.get("id")
+        if not item_id:
+            raise HTTPException(status_code=400, detail="ID is required")
+        result = await _get_debrid_service(provider).delete_item(
+            str(item_id), data.get("is_transfer", False)
+        )
+        return {"status": "success", "result": result}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("%s delete error: %s", provider, e)
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/audiobooks/details")
 async def get_audiobook_details_endpoint(id: str = Query(..., description="Audiobook slug")):
