@@ -21,6 +21,7 @@ import {
 import { audio, getActivePlayer, performGaplessSwitch, preloadNextTrack } from './audio-engine.js';
 import {
     playTrack, loadTrack, togglePlay, playNext, playPrevious,
+    handleNativeMediaCommand,
     updateQueueUI, updatePlayerUI, updatePlayButton, updateVolume,
     removeFromQueue, loadQueueFromStorage, setPlaybackDeps,
     updateFormatBadge, toggleFullScreen, updateFullscreenUI,
@@ -337,6 +338,49 @@ window.renderMyBooksView = renderMyBooksView;
 window.fetchAudioFeaturesForTracks = fetchAudioFeaturesForTracks;
 window.renderDJBadgeForTrack = renderDJBadgeForTrack;
 
+window.FreedifyAndroidMedia = {
+    handleCommand: (command, value = 0) => handleNativeMediaCommand(command, Number(value) || 0),
+};
+
+window.FreedifyAndroidNavigation = {
+    goBack: () => {
+        const closeTargets = [
+            ['visualizer-overlay', 'visualizer-close'],
+            ['fullscreen-player', 'fs-close-btn'],
+            ['book-info-modal', 'book-info-close'],
+            ['audiobook-modal', 'audiobook-modal-close'],
+            ['album-modal', 'album-modal-close'],
+            ['podcast-modal', 'podcast-modal-close'],
+            ['settings-modal', 'settings-close'],
+            ['ai-modal', 'ai-modal-close'],
+            ['lyrics-modal', 'lyrics-modal-close'],
+            ['concerts-modal', 'concerts-modal-close'],
+            ['dj-setlist-modal', 'dj-modal-close'],
+            ['playlist-modal', 'playlist-modal-close'],
+            ['artist-bio-modal', 'artist-bio-close'],
+            ['setlist-modal', 'setlist-close-btn'],
+            ['drive-sync-modal', 'drive-modal-close-top'],
+            ['concert-modal', 'concert-modal-close'],
+        ];
+        for (const [containerId, closeId] of closeTargets) {
+            const container = document.getElementById(containerId);
+            if (container && !container.classList.contains('hidden')) {
+                document.getElementById(closeId)?.click();
+                return true;
+            }
+        }
+        if (queueSection && !queueSection.classList.contains('hidden')) {
+            document.getElementById('queue-close')?.click();
+            return true;
+        }
+        if (detailView && !detailView.classList.contains('hidden')) {
+            backBtn?.click();
+            return true;
+        }
+        return false;
+    },
+};
+
 // ========== SERVICE WORKER ==========
 if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').catch(console.error);
@@ -359,6 +403,15 @@ window.addEventListener('beforeunload', () => {
 
 // ========== INIT ==========
 showEmptyState();
+
+if (document.documentElement.classList.contains('android-app')) {
+    state.searchType = 'audiobook';
+    document.querySelectorAll('.type-btn, .type-btn-menu').forEach((button) => {
+        button.classList.toggle('active', button.dataset.type === 'audiobook');
+    });
+    searchInput.placeholder = 'Search audiobooks or paste an AudiobookBay link';
+    renderMyBooksView();
+}
 
 // Deferred init
 setTimeout(() => {
@@ -524,4 +577,3 @@ window.isCloudLoggedIn = isCloudLoggedIn;
         if (e.key === 'Enter') loginBtn?.click();
     });
 })();
-

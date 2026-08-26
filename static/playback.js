@@ -633,24 +633,6 @@ function handlePause(e) {
             }
         }
 
-        // Check if this is a background/system interrupt rather than user action.
-        // If the track ended naturally, handleEnded will take care of advancing.
-        // If the user didn't pause manually but the player stopped (e.g. Android
-        // background throttling, network hiccup), try to resume after a short delay.
-        // Skip during track transitions — the old player fires a pause event that
-        // we should not try to recover from.
-        if (state.isPlaying && !player.ended && player.readyState >= 2 && !audio.transitionInProgress && !audio.loadInProgress) {
-            // Likely a background interrupt — attempt auto-resume
-            setTimeout(() => {
-                const p = getActivePlayer();
-                if (state.isPlaying && p.paused && !p.ended && p.readyState >= 2 && !audio.transitionInProgress && !audio.loadInProgress) {
-                    console.warn('Auto-resuming after unexpected pause');
-                    p.play().catch(() => {});
-                }
-            }, 1500);
-            return; // Don't update UI state to paused — we're trying to recover
-        }
-
         state.isPlaying = false;
         emit('playStateChanged', false);
         updatePlayButton();
@@ -776,9 +758,8 @@ function handlePlaying() {
 }
 
 // ========== PLAYBACK WATCHDOG ==========
-// Periodic check: if we think we're playing but audio is stalled/paused,
-// attempt recovery. This catches edge cases missed by event handlers
-// (e.g. Android background throttling, frozen timers).
+// Recover missed ended events, but never override a pause from Android audio
+// focus, headphones, Bluetooth controls, or another media app.
 setInterval(() => {
     if (!state.isPlaying) return;
     // Don't interfere while a track is actively loading or transitioning
@@ -786,24 +767,45 @@ setInterval(() => {
     const player = getActivePlayer();
     if (!player || !player.src) return;
 
-    // Player is paused but we think we're playing
-    if (player.paused && !player.ended) {
-        if (player.readyState >= 2) {
-            console.warn('[Watchdog] Player paused unexpectedly — resuming');
-            player.play().catch(() => {});
-        } else if (player.readyState === 0 && state.currentIndex < state.queue.length - 1) {
-            // Player completely lost its source — skip to next
-            console.warn('[Watchdog] Player source lost — advancing to next track');
-            playNext(true);
-        }
-    }
-
     // Player reached the end but handleEnded didn't fire (rare)
     if (!player.paused && player.ended && state.currentIndex < state.queue.length - 1) {
         console.warn('[Watchdog] Track ended but handler missed — advancing');
         playNext(true);
     }
 }, 5000);
+
+export function handleNativeMediaCommand(command, value = 0) {
+    const player = getActivePlayer();
+    switch (command) {
+        case 'play':
+            if (player.paused) togglePlay();
+            break;
+        case 'pause':
+            if (!player.paused) {
+                state.isPlaying = false;
+                updatePlayButton();
+                player.pause();
+            }
+            break;
+        case 'previous':
+            playPrevious();
+            break;
+        case 'next':
+            playNext();
+            break;
+        case 'seekTo':
+            if (Number.isFinite(player.duration) && player.duration > 0) {
+                player.currentTime = Math.max(0, Math.min(Number(value) / 1000, player.duration));
+            }
+            break;
+        case 'stop':
+            state.isPlaying = false;
+            player.pause();
+            player.currentTime = 0;
+            updatePlayButton();
+            break;
+    }
+}
 
 // ========== BIND EVENTS ==========
 audioPlayer.addEventListener('play', handlePlay);

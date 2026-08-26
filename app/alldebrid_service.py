@@ -4,6 +4,7 @@ import base64
 import binascii
 import logging
 import os
+import re
 from urllib.parse import unquote, urlparse
 
 import httpx
@@ -14,6 +15,10 @@ logger = logging.getLogger(__name__)
 API_BASE_URL = "https://api.alldebrid.com"
 APP_NAME = "Freedify"
 AUDIO_EXTENSIONS = (".mp3", ".m4b", ".m4a", ".flac", ".wav", ".ogg", ".aac", ".opus")
+
+
+def _natural_path_key(path: str):
+    return [int(part) if part.isdigit() else part for part in re.split(r"(\d+)", path.lower())]
 
 
 async def _make_request(
@@ -181,7 +186,7 @@ async def list_folder_contents(magnet_id: str):
             item["link"] = item["source_link"]
             item["type"] = "file"
             audio_files.append(item)
-    audio_files.sort(key=lambda item: item["path"].lower())
+    audio_files.sort(key=lambda item: _natural_path_key(item["path"]))
     return {
         "status": "success",
         "audio_files": audio_files,

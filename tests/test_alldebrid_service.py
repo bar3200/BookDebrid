@@ -80,6 +80,14 @@ class AllDebridServiceTests(unittest.IsolatedAsyncioTestCase):
             ],
         )
 
+    def test_natural_path_key_orders_numbered_chapters(self):
+        paths = ["Book/Chapter 10.mp3", "Book/Chapter 2.mp3", "Book/Chapter 1.mp3"]
+
+        self.assertEqual(
+            sorted(paths, key=alldebrid_service._natural_path_key),
+            ["Book/Chapter 1.mp3", "Book/Chapter 2.mp3", "Book/Chapter 10.mp3"],
+        )
+
     def test_normalise_transfer_maps_progress_and_ready_state(self):
         running = alldebrid_service._normalise_transfer(
             {"id": 123, "filename": "Book", "size": 200, "downloaded": 50, "statusCode": 1, "status": "Downloading"}

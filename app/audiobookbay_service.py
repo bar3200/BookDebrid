@@ -15,6 +15,20 @@ ABB_BASE_URL = "https://audiobookbay.lu"
 MAX_RETRIES = 2
 
 
+def _split_title_author(raw_title: str) -> tuple[str, str | None]:
+    """Extract ABB's common ``Book title - Author`` suffix conservatively."""
+    parts = [part.strip() for part in raw_title.rsplit(" - ", 1)]
+    if len(parts) != 2:
+        return raw_title.strip(), None
+    title, candidate = parts
+    words = candidate.split()
+    if not title or not 1 <= len(words) <= 8 or len(candidate) > 80:
+        return raw_title.strip(), None
+    if any(marker in candidate.lower() for marker in ("audiobook", "book ", "books ", "series")):
+        return raw_title.strip(), None
+    return title, candidate
+
+
 def _create_driver():
     """Create a memory-optimized headless Chrome driver for constrained environments (Render, Docker)."""
     # Keep desktop browser dependencies out of the Android APK. They are loaded
@@ -167,7 +181,7 @@ async def search_audiobooks(query: str, page: int = 1):
                     f"Details: {e}"
                 ),
             )
-        return _parse_search_results(html_content)
+        return _rank_search_results(_parse_search_results(html_content), query)
 
     def do_search(search_query: str, target_page: int):
         from selenium.webdriver.common.by import By
@@ -235,7 +249,35 @@ async def search_audiobooks(query: str, page: int = 1):
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Failed to fetch from AudiobookBay via Selenium: {str(e)}")
 
-    return _parse_search_results(html_content)
+    return _rank_search_results(_parse_search_results(html_content), query)
+
+
+def _rank_search_results(results: list[dict], query: str) -> list[dict]:
+    """Discard unrelated fallback posts and put the closest title matches first."""
+    normalized_query = " ".join(re.findall(r"[a-z0-9]+", query.lower()))
+    tokens = [token for token in normalized_query.split() if len(token) > 1]
+    if not tokens:
+        return results
+
+    ranked = []
+    for index, item in enumerate(results):
+        title = " ".join(re.findall(r"[a-z0-9]+", item.get("title", "").lower()))
+        description = " ".join(
+            re.findall(r"[a-z0-9]+", item.get("description", "").lower())
+        )
+        title_hits = sum(token in title.split() for token in tokens)
+        text_hits = sum(token in f"{title} {description}".split() for token in tokens)
+        if text_hits == 0:
+            continue
+        score = text_hits * 10 + title_hits * 20
+        if normalized_query and normalized_query in title:
+            score += 100
+        if title_hits == len(tokens):
+            score += 50
+        ranked.append((score, index, item))
+
+    ranked.sort(key=lambda entry: (-entry[0], entry[1]))
+    return [item for _, _, item in ranked]
 
 
 def _parse_search_results(html_content: str):
@@ -253,7 +295,8 @@ def _parse_search_results(html_content: str):
         if not title_elem:
             continue
 
-        title = title_elem.text.strip()
+        raw_title = title_elem.text.strip()
+        title, author = _split_title_author(raw_title)
         link = title_elem['href']
 
         # Extract ID or slug from link (e.g. /audio-books/some-book-name/)
@@ -273,6 +316,7 @@ def _parse_search_results(html_content: str):
         results.append({
             "id": slug,
             "title": title,
+            "author": author,
             "url": link,
             "cover_image": cover_image,
             "description": desc_text[:200] + "..." if len(desc_text) > 200 else desc_text,
@@ -306,7 +350,8 @@ async def get_audiobook_details(slug: str):
 
     # Title
     title_elem = soup.find('div', class_='postTitle')
-    title = title_elem.find('h1').text.strip() if title_elem and title_elem.find('h1') else "Unknown Title"
+    raw_title = title_elem.find('h1').text.strip() if title_elem and title_elem.find('h1') else "Unknown Title"
+    title, author = _split_title_author(raw_title)
 
     # Cover
     cover_elem = soup.find('div', class_='postContent')
@@ -354,6 +399,7 @@ async def get_audiobook_details(slug: str):
     return {
         "id": slug,
         "title": title,
+        "author": author,
         "cover_image": cover_image,
         "description": description,
         "info_hash": info_hash,

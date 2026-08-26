@@ -259,6 +259,12 @@ settingsBtn?.addEventListener('click', (e) => {
 
 settingsClose?.addEventListener('click', closeSettingsModal);
 
+document.getElementById('android-api-key-btn')?.addEventListener('click', () => {
+    if (window.FreedifyAndroid?.openApiKeySettings) {
+        window.FreedifyAndroid.openApiKeySettings();
+    }
+});
+
 // Close on backdrop click
 settingsModal?.addEventListener('click', (e) => {
     if (e.target === settingsModal) closeSettingsModal();

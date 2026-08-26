@@ -407,7 +407,7 @@ export function addAudiobookFavorite(book) {
     state.audiobookFavorites.unshift({
         id: book.id,
         name: book.name || book.title,
-        artist: book.artists || book.artist || 'AudiobookBay',
+        artist: book.artists || book.artist || book.author || 'AudiobookBay',
         artwork: book.album_art || book.cover_image || book.artwork || '/static/icon.svg',
         folder_id: book.folder_id || null,
         premiumize_id: book.premiumize_id || null,

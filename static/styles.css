@@ -54,6 +54,14 @@ html.android-app {
     --radius-lg: 24px;
 }
 
+.android-only {
+    display: none !important;
+}
+
+.android-app .android-only {
+    display: flex !important;
+}
+
 html.android-app body {
     background:
         radial-gradient(circle at 15% -10%, rgba(99, 102, 241, 0.22), transparent 36%),
@@ -69,8 +77,8 @@ html.android-app body {
 }
 
 .android-app .header {
-    min-height: 62px;
-    padding: 10px 16px 8px;
+    min-height: 56px;
+    padding: 8px 14px 6px;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -82,8 +90,28 @@ html.android-app body {
 }
 
 .android-app .logo {
-    font-size: 1.35rem;
+    font-size: 1.2rem;
     letter-spacing: -0.03em;
+}
+
+.android-app .brand-text {
+    color: #f8fafc;
+    font-family: inherit;
+    font-size: 1.2rem;
+    font-weight: 750;
+    letter-spacing: -0.035em;
+    background: none;
+    -webkit-text-fill-color: currentColor;
+    filter: none;
+}
+
+.android-app .logo::before {
+    content: '';
+    width: 28px;
+    height: 28px;
+    border-radius: 9px;
+    background: linear-gradient(145deg, #818cf8, #7c3aed 58%, #c026d3);
+    box-shadow: 0 7px 18px rgba(99, 102, 241, 0.28);
 }
 
 .android-app #hifi-btn {
@@ -92,10 +120,16 @@ html.android-app body {
 
 .android-app .header-btn,
 .android-app .settings-btn {
-    min-width: 44px;
-    min-height: 44px;
-    border-radius: 14px;
-    background: rgba(255, 255, 255, 0.06);
+    min-width: 42px;
+    min-height: 42px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.055);
+}
+
+.android-app .settings-btn:active {
+    transform: scale(0.94);
+    background: rgba(129, 140, 248, 0.2);
 }
 
 .android-app .search-section {

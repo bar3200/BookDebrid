@@ -8,17 +8,20 @@ import { isInLibrary, toggleLibrary } from './data.js';
 
 // ========== SEARCH ==========
 let searchTimeout = null;
+let activeSearchController = null;
+let searchRequestId = 0;
 // Only search on Enter key press (not as-you-type to avoid rate limiting)
 
 searchInput.addEventListener('input', (e) => {
-    // Just clear empty state when typing
     if (!e.target.value.trim()) {
-        showEmptyState();
+        if (state.searchType === 'audiobook') emit('renderMyBooksView');
+        else if (state.searchType === 'podcast') emit('renderMyPodcastsView');
+        else showEmptyState();
     }
 });
 
 searchInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
+    if (e.key === 'Enter' && !e.isComposing) {
         e.preventDefault();
         clearTimeout(searchTimeout);
         const query = searchInput.value.trim();
@@ -31,7 +34,9 @@ searchInput.addEventListener('keydown', (e) => {
 
 searchClear.addEventListener('click', () => {
     searchInput.value = '';
-    showEmptyState();
+    if (state.searchType === 'audiobook') emit('renderMyBooksView');
+    else if (state.searchType === 'podcast') emit('renderMyPodcastsView');
+    else showEmptyState();
     searchInput.focus();
 });
 
@@ -127,19 +132,33 @@ if (crossfadeCheckbox) {
 // ========== SEARCH & RESULTS ==========
 
 export async function performSearch(query, append = false) {
-    if (!query) return;
+    const requestedQuery = String(query || '').trim();
+    if (!requestedQuery) return;
+
+    const requestedType = state.searchType;
+    if (!append) activeSearchController?.abort();
+    const controller = new AbortController();
+    activeSearchController = controller;
+    const requestId = ++searchRequestId;
 
     // Track search state for Load More
     if (!append) {
         state.searchOffset = 0;
-        state.lastSearchQuery = query;
+        state.lastSearchQuery = requestedQuery;
     }
 
-    showLoading(append ? 'Loading more...' : `Searching for "${query}"...`);
+    showLoading(append ? 'Loading more...' : `Searching for "${requestedQuery}"...`);
 
     try {
-        const response = await fetch(`/api/search?q=${encodeURIComponent(query)}&type=${state.searchType}&offset=${state.searchOffset}`);
+        const response = await fetch(
+            `/api/search?q=${encodeURIComponent(requestedQuery)}&type=${encodeURIComponent(requestedType)}&offset=${state.searchOffset}`,
+            { signal: controller.signal },
+        );
         const data = await response.json();
+
+        // A slower previous request must never replace results for the term the
+        // user is currently looking at, which is especially noticeable on mobile.
+        if (requestId !== searchRequestId) return;
 
         if (!response.ok) throw new Error(data.detail || 'Search failed');
 
@@ -168,7 +187,7 @@ export async function performSearch(query, append = false) {
             }
         }
 
-        renderResults(data.results, data.type || state.searchType, append);
+        renderResults(data.results, data.type || requestedType, append);
 
         // Update offset for next load
         state.searchOffset += data.results.length;
@@ -186,6 +205,7 @@ export async function performSearch(query, append = false) {
         }
 
     } catch (error) {
+        if (error.name === 'AbortError' || requestId !== searchRequestId) return;
         console.error('Search error:', error);
         showError(error.message || 'Search failed. Please try again.');
     }

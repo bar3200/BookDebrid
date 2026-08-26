@@ -9,12 +9,6 @@
     <script>
         if (navigator.userAgent.includes('FreedifyAndroid') || new URLSearchParams(location.search).has('androidPreview')) {
             document.documentElement.classList.add('android-app');
-            window.addEventListener('DOMContentLoaded', () => setTimeout(() => {
-                const audiobookTab = document.querySelector('.type-btn[data-type="audiobook"]');
-                if (audiobookTab && !audiobookTab.classList.contains('active')) audiobookTab.click();
-                const search = document.getElementById('search-input');
-                if (search) search.placeholder = 'Search audiobooks or paste an AudiobookBay link';
-            }, 0));
         }
     </script>
     <title>Freedify</title>
@@ -93,6 +87,7 @@
                     <!-- Connections -->
                     <div class="settings-section">
                         <h3 class="settings-section-title">Connections</h3>
+                        <button class="settings-item android-only" id="android-api-key-btn">AllDebrid API key</button>
                         <button class="settings-item" id="spotify-connect-btn">Connect Spotify</button>
                         <button class="settings-item" id="lastfm-menu-btn">Connect Last.fm</button>
                         <button class="settings-item" id="sync-menu-btn">Sync Devices</button>
@@ -779,21 +774,6 @@
             <button id="visualizer-close" class="visualizer-close-btn">✕ Exit</button>
         </div>
         <div class="visualizer-hint">Press ESC or click to exit</div>
-    </div>
-
-    <!-- Podcast Episode Details Modal -->
-    <div id="podcast-modal" class="podcast-modal hidden">
-        <div class="podcast-modal-content">
-            <button id="podcast-modal-close" class="podcast-modal-close">×</button>
-            <img id="podcast-modal-art" class="podcast-modal-art" src="" alt="Episode Art">
-            <h2 id="podcast-modal-title" class="podcast-modal-title"></h2>
-            <p id="podcast-modal-date" class="podcast-modal-date"></p>
-            <p id="podcast-modal-duration" class="podcast-modal-duration"></p>
-            <div id="podcast-modal-description" class="podcast-modal-description"></div>
-            <div class="podcast-modal-actions">
-                <button id="podcast-modal-play" class="podcast-modal-play">▶ Play Episode</button>
-            </div>
-        </div>
     </div>
 
     <!-- Lyrics Modal -->

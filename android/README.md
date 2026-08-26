@@ -16,7 +16,8 @@ backend is never bound to the LAN.
    direct AudiobookBay URL. Magnet upload, polling, chapter enumeration,
    playback-link refresh, cloud magnet search, and deletion use the embedded
    backend.
-4. Replace the key later from the app bar menu under **AllDebrid API key**.
+4. Replace the key later from the in-app **Settings** screen under
+   **AllDebrid API key**. Updating it no longer reloads the player.
 
 The credential is encrypted with an AES-GCM key held by Android Keystore. Only
 the ciphertext and IV are kept in the app's private `SharedPreferences`; the
@@ -58,7 +59,7 @@ the first secret. Never commit the keystore or any password. Keep an encrypted,
 tested backup of the keystore and credentials: losing this signing identity
 means future APKs cannot update existing installations.
 
-Version `1.0.1` uses `versionCode` 2. Installations made from earlier workflow
+Version `1.1.0` uses `versionCode` 3. Installations made from earlier workflow
 debug artifacts have a different signature and therefore require a one-time
 uninstall before installing this release. That uninstall removes the app's
 stored settings, including the encrypted AllDebrid key. After installing this
@@ -81,9 +82,22 @@ place as long as their `versionCode` increases.
   packages may be unavailable or use their existing non-AI fallback.
 - A foreground media-playback service keeps the app process and localhost
   backend alive and makes WebView audio reasonably resilient when the app is in
-  the background. Playback is still WebView-based: this version does not expose
-  native lock-screen media controls, and Android/OEM battery policies may stop
-  it after the app is removed from recents or after prolonged background use.
+  the background. A native Android media session mirrors title, artist,
+  duration, position, playback speed, and play state, and routes notification,
+  lock-screen, Bluetooth, and headset play/pause/seek/previous/next commands
+  back to the web player. Android/OEM battery policies may still stop the
+  process after the app is removed from recents or after prolonged background
+  use.
+- Android opens directly in audiobook mode. Search requests preserve the exact
+  typed term, cancel stale in-flight searches, and filter unrelated fallback
+  posts returned by AudiobookBay.
+- AllDebrid exposes the torrent's file tree, so multi-file books become one
+  chapter per audio file. Freedify keeps nested disc/folder names, orders
+  numbered filenames naturally (`2` before `10`), and uses AudiobookBay's title,
+  author, cover, and description for book-level metadata. A single chapterized
+  M4B remains one playable file because its internal chapter atom is not exposed
+  by AllDebrid's file listing; supporting virtual seek-based M4B chapters would
+  require a separate range-based metadata reader.
 - Cleartext networking is disabled except for `127.0.0.1`/`localhost`; external
   AllDebrid and content requests use HTTPS.
 

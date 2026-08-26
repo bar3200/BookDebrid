@@ -11,8 +11,6 @@ import android.os.Build
 import android.os.Bundle
 import android.text.InputType
 import android.view.Gravity
-import android.view.Menu
-import android.view.MenuItem
 import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.WebChromeClient
@@ -21,6 +19,7 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.webkit.WebSettings
+import android.webkit.JavascriptInterface
 import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
@@ -30,6 +29,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import org.json.JSONObject
 
 class MainActivity : AppCompatActivity() {
     private lateinit var secureSettings: SecureSettings
@@ -37,8 +37,15 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        supportActionBar?.title = "Freedify"
         secureSettings = SecureSettings(this)
+        PlaybackService.commandHandler = { command, value ->
+            runOnUiThread {
+                webView?.evaluateJavascript(
+                    "window.FreedifyAndroidMedia?.handleCommand(${JSONObject.quote(command)}, $value)",
+                    null,
+                )
+            }
+        }
         requestNotificationPermission()
 
         val apiKey = secureSettings.getApiKey()
@@ -47,20 +54,6 @@ class MainActivity : AppCompatActivity() {
         } else {
             launchFreedify(apiKey)
         }
-    }
-
-    override fun onCreateOptionsMenu(menu: Menu): Boolean {
-        menu.add(Menu.NONE, MENU_SETTINGS, Menu.NONE, "AllDebrid API key")
-            .setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
-        return true
-    }
-
-    override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        if (item.itemId == MENU_SETTINGS) {
-            showSettingsDialog()
-            return true
-        }
-        return super.onOptionsItemSelected(item)
     }
 
     private fun showFirstRunScreen() {
@@ -111,7 +104,24 @@ class MainActivity : AppCompatActivity() {
                 val key = input.text.toString().trim()
                 if (key.isNotBlank()) {
                     secureSettings.saveApiKey(key)
-                    launchFreedify(key)
+                    if (webView == null) {
+                        launchFreedify(key)
+                    } else {
+                        BackendManager.startOrUpdate(
+                            applicationContext,
+                            key,
+                            onReady = {
+                                Toast.makeText(
+                                    this,
+                                    "AllDebrid API key updated",
+                                    Toast.LENGTH_SHORT,
+                                ).show()
+                            },
+                            onError = { message ->
+                                Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+                            },
+                        )
+                    }
                 } else {
                     Toast.makeText(this, "API key was not changed", Toast.LENGTH_SHORT).show()
                 }
@@ -170,8 +180,9 @@ class MainActivity : AppCompatActivity() {
             allowFileAccess = false
             allowContentAccess = false
             cacheMode = WebSettings.LOAD_NO_CACHE
-            userAgentString = "$userAgentString FreedifyAndroid/1.0"
+            userAgentString = "$userAgentString FreedifyAndroid/${BuildConfig.VERSION_NAME}"
         }
+        browser.addJavascriptInterface(AndroidBridge(), "FreedifyAndroid")
         CookieManager.getInstance().setAcceptCookie(true)
         CookieManager.getInstance().setAcceptThirdPartyCookies(browser, true)
         browser.webChromeClient = WebChromeClient()
@@ -210,7 +221,45 @@ class MainActivity : AppCompatActivity() {
 
     override fun onBackPressed() {
         val browser = webView
-        if (browser != null && browser.canGoBack()) browser.goBack() else super.onBackPressed()
+        if (browser == null) {
+            moveTaskToBack(true)
+            return
+        }
+        browser.evaluateJavascript("window.FreedifyAndroidNavigation?.goBack() === true") { handled ->
+            if (handled != "true") moveTaskToBack(true)
+        }
+    }
+
+    override fun onDestroy() {
+        PlaybackService.commandHandler = null
+        super.onDestroy()
+    }
+
+    private inner class AndroidBridge {
+        @JavascriptInterface
+        fun openApiKeySettings() {
+            runOnUiThread { showSettingsDialog() }
+        }
+
+        @JavascriptInterface
+        fun updateMetadata(title: String, artist: String, album: String) {
+            PlaybackService.publishMetadata(title, artist, album)
+        }
+
+        @JavascriptInterface
+        fun updatePlaybackState(
+            playing: Boolean,
+            positionSeconds: Double,
+            durationSeconds: Double,
+            playbackRate: Double,
+        ) {
+            PlaybackService.publishPlaybackState(
+                playing,
+                (positionSeconds * 1000).toLong(),
+                (durationSeconds * 1000).toLong(),
+                playbackRate.toFloat(),
+            )
+        }
     }
 
     private fun requestNotificationPermission() {
@@ -230,7 +279,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     companion object {
-        private const val MENU_SETTINGS = 1
         private const val FREEDIFY_URL = "http://127.0.0.1:8000/"
     }
 }

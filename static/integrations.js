@@ -18,6 +18,14 @@ import { savePlaylists, createPlaylist, addToPlaylist, saveLibrary, saveHistory,
 // ========== MEDIA SESSION API (Lock Screen Controls) ==========
 
 function updateMediaSession(track) {
+    if (window.FreedifyAndroid?.updateMetadata) {
+        window.FreedifyAndroid.updateMetadata(
+            track.name || 'Unknown Track',
+            track.artists || 'Unknown Artist',
+            track.album || '',
+        );
+    }
+
     if (!('mediaSession' in navigator)) return;
 
     const artworkSrc = track.album_art || '/static/icon.svg';
@@ -35,6 +43,23 @@ function updateMediaSession(track) {
         ]
     });
     navigator.mediaSession.playbackState = 'playing';
+}
+
+let lastAndroidPlaybackSync = 0;
+function updateAndroidPlayback(force = false) {
+    if (!window.FreedifyAndroid?.updatePlaybackState) return;
+    const now = Date.now();
+    if (!force && now - lastAndroidPlaybackSync < 1000) return;
+    lastAndroidPlaybackSync = now;
+    const player = getActivePlayer();
+    const duration = Number.isFinite(player.duration) ? player.duration : 0;
+    const position = Number.isFinite(player.currentTime) ? player.currentTime : 0;
+    window.FreedifyAndroid.updatePlaybackState(
+        !player.paused && !player.ended,
+        position,
+        duration,
+        player.playbackRate || 1,
+    );
 }
 
 // Register action handlers at page load — they persist across playbacks (per web.dev spec)
@@ -106,6 +131,16 @@ function updateMediaSessionPosition() {
 }
 audioPlayer.addEventListener('timeupdate', updateMediaSessionPosition);
 audioPlayer2.addEventListener('timeupdate', updateMediaSessionPosition);
+audioPlayer.addEventListener('timeupdate', () => updateAndroidPlayback());
+audioPlayer2.addEventListener('timeupdate', () => updateAndroidPlayback());
+audioPlayer.addEventListener('play', () => updateAndroidPlayback(true));
+audioPlayer2.addEventListener('play', () => updateAndroidPlayback(true));
+audioPlayer.addEventListener('pause', () => updateAndroidPlayback(true));
+audioPlayer2.addEventListener('pause', () => updateAndroidPlayback(true));
+audioPlayer.addEventListener('loadedmetadata', () => updateAndroidPlayback(true));
+audioPlayer2.addEventListener('loadedmetadata', () => updateAndroidPlayback(true));
+audioPlayer.addEventListener('ratechange', () => updateAndroidPlayback(true));
+audioPlayer2.addEventListener('ratechange', () => updateAndroidPlayback(true));
 
 // ========== ANDROID BACKGROUND PLAYBACK RESILIENCE ==========
 
@@ -120,11 +155,6 @@ document.addEventListener('visibilitychange', () => {
         if (audio.crossfadeTimeout) {
             clearTimeout(audio.crossfadeTimeout);
             audio.crossfadeTimeout = null;
-        }
-        // If we should be playing but audio is paused, try to resume
-        const player = getActivePlayer();
-        if (state.isPlaying && player.paused && player.readyState >= 2) {
-            player.play().catch(() => {});
         }
     }
 });

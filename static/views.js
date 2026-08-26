@@ -2194,16 +2194,23 @@ async function searchDebridForAudiobook(title, provider = getAudiobookProvider()
 }
 
 function processDirectAudioFiles(audioFiles, details, provider = getAudiobookProvider(), itemId = null) {
-    audioFiles.sort((a, b) => a.name.localeCompare(b.name));
+    audioFiles.sort((a, b) => (a.path || a.name).localeCompare(
+        b.path || b.name,
+        undefined,
+        { numeric: true, sensitivity: 'base' },
+    ));
     audiobookModal.classList.add('hidden');
 
     const mappedTracks = audioFiles.map((file, index) => {
-        const stableId = `ab_${details.title}_${file.name}`.replace(/[^a-zA-Z0-9_]/g, '_');
+        const chapterSource = file.path || file.name;
+        const chapterParts = chapterSource.replace(/\.[^/.]+$/, '').split('/').filter(Boolean);
+        const chapterName = chapterParts.slice(-2).join(' · ');
+        const stableId = `ab_${details.title}_${chapterSource}`.replace(/[^a-zA-Z0-9_]/g, '_');
 
         return {
             id: stableId,
             isrc: makeDebridTrackIsrc(file, provider),
-            name: file.name.replace(/\.[^/.]+$/, ""),
+            name: chapterName || `Chapter ${index + 1}`,
             artists: details.author || 'Unknown Author',
             album: details.title,
             album_art: details.cover_image || '/static/icon.svg',
