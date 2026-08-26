@@ -59,7 +59,7 @@ the first secret. Never commit the keystore or any password. Keep an encrypted,
 tested backup of the keystore and credentials: losing this signing identity
 means future APKs cannot update existing installations.
 
-Version `1.3.4` uses `versionCode` 9. Installations made from earlier workflow
+Version `1.3.5` uses `versionCode` 10. Installations made from earlier workflow
 debug artifacts have a different signature and therefore require a one-time
 uninstall before installing this release. That uninstall removes the app's
 stored settings, including the encrypted AllDebrid key. After installing this
@@ -94,8 +94,9 @@ place as long as their `versionCode` increases.
   process after the app is removed from recents or after prolonged background
   use.
 - Android opens directly in audiobook mode. Search requests preserve the exact
-  typed term, cancel stale in-flight searches, and filter unrelated fallback
-  posts returned by AudiobookBay.
+  typed term, cancel stale in-flight searches, use AudiobookBay's explicit
+  paginated search route, and reject unrelated homepage responses instead of
+  presenting them as an empty result set.
 - Music and podcast browsing remain available from the search-type row. Music
   searches use directly playable Deezer results in the embedded build (Tidal's
   lossless DASH path is skipped because it requires FFmpeg); YT Music and

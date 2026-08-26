@@ -1,11 +1,13 @@
-from bs4 import BeautifulSoup
-import urllib.parse
-from fastapi import HTTPException
-import re
 import asyncio
+import html
 import logging
 import os
+import re
 import shutil
+import urllib.parse
+
+from bs4 import BeautifulSoup
+from fastapi import HTTPException
 import httpx
 
 logger = logging.getLogger(__name__)
@@ -126,18 +128,44 @@ def _fetch_page_http(url: str) -> str:
     """Android-compatible fallback where desktop ChromeDriver is unavailable."""
     headers = {
         "User-Agent": (
-            "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 "
-            "(KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36"
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
         ),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.9",
+        "Upgrade-Insecure-Requests": "1",
     }
     with httpx.Client(headers=headers, follow_redirects=True, timeout=45.0) as client:
         # Establish any cookies which AudiobookBay sets on its home page first.
         if url != ABB_BASE_URL:
-            client.get(ABB_BASE_URL)
-        response = client.get(url)
+            home_response = client.get(ABB_BASE_URL)
+            home_response.raise_for_status()
+        response = client.get(url, headers={"Referer": f"{ABB_BASE_URL}/"})
         response.raise_for_status()
         return response.text
+
+
+def _android_search_urls(query: str, page: int) -> list[str]:
+    """Return ABB search routes in reliability order for the embedded client."""
+    encoded = urllib.parse.quote_plus(query)
+    paged_url = f"{ABB_BASE_URL}/page/{max(1, page)}/?s={encoded}"
+    if page > 1:
+        return [paged_url]
+    # ABB sometimes treats a fresh request to /?s= as its homepage. The
+    # explicit page/1 route is used first, while the canonical route remains a
+    # fallback for installations where WordPress redirects page 1.
+    return [paged_url, f"{ABB_BASE_URL}/?s={encoded}"]
+
+
+def _is_search_results_page(html_content: str, query: str) -> bool:
+    """Distinguish a real ABB search page from its unrelated homepage."""
+    heading_match = re.search(r"<h1\b[^>]*>(.*?)</h1>", html_content, re.I | re.S)
+    if not heading_match:
+        return False
+    heading_text = html.unescape(re.sub(r"<[^>]+>", " ", heading_match.group(1)))
+    heading_tokens = set(re.findall(r"[a-z0-9]+", heading_text.lower()))
+    query_tokens = set(re.findall(r"[a-z0-9]+", query.lower()))
+    return bool(query_tokens) and query_tokens.issubset(heading_tokens)
 
 
 def extract_slug_from_url(url: str):
@@ -167,21 +195,32 @@ async def search_audiobooks(query: str, page: int = 1):
     loop = asyncio.get_event_loop()
 
     if os.environ.get("ANDROID_EMBEDDED") == "1":
-        encoded = urllib.parse.quote_plus(query)
-        page_path = f"/page/{page}" if page > 1 else ""
-        search_url = f"{ABB_BASE_URL}{page_path}/?s={encoded}"
-        try:
-            html_content = await loop.run_in_executor(None, _fetch_page_http, search_url)
-        except Exception as e:
-            raise HTTPException(
-                status_code=502,
-                detail=(
-                    "AudiobookBay could not be reached from Android. "
-                    "You can still paste a direct AudiobookBay book URL. "
-                    f"Details: {e}"
-                ),
+        last_error = None
+        for search_url in _android_search_urls(query, page):
+            try:
+                html_content = await loop.run_in_executor(None, _fetch_page_http, search_url)
+            except Exception as e:
+                last_error = e
+                continue
+
+            if not _is_search_results_page(html_content, query):
+                continue
+
+            return _rank_search_results(
+                _parse_search_results(html_content),
+                query,
+                retain_unmatched=True,
             )
-        return _rank_search_results(_parse_search_results(html_content), query)
+
+        detail = f" Details: {last_error}" if last_error else ""
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "AudiobookBay returned its homepage instead of search results. "
+                "Please retry, or paste a direct AudiobookBay book URL."
+                f"{detail}"
+            ),
+        )
 
     def do_search(search_query: str, target_page: int):
         from selenium.webdriver.common.by import By
@@ -252,7 +291,11 @@ async def search_audiobooks(query: str, page: int = 1):
     return _rank_search_results(_parse_search_results(html_content), query)
 
 
-def _rank_search_results(results: list[dict], query: str) -> list[dict]:
+def _rank_search_results(
+    results: list[dict],
+    query: str,
+    retain_unmatched: bool = False,
+) -> list[dict]:
     """Discard unrelated fallback posts and put the closest title matches first."""
     normalized_query = " ".join(re.findall(r"[a-z0-9]+", query.lower()))
     tokens = [token for token in normalized_query.split() if len(token) > 1]
@@ -265,14 +308,16 @@ def _rank_search_results(results: list[dict], query: str) -> list[dict]:
         description = " ".join(
             re.findall(r"[a-z0-9]+", item.get("description", "").lower())
         )
+        author = " ".join(re.findall(r"[a-z0-9]+", (item.get("author") or "").lower()))
         title_hits = sum(token in title.split() for token in tokens)
-        text_hits = sum(token in f"{title} {description}".split() for token in tokens)
-        if text_hits == 0:
+        author_hits = sum(token in author.split() for token in tokens)
+        text_hits = sum(token in f"{title} {author} {description}".split() for token in tokens)
+        if text_hits == 0 and not retain_unmatched:
             continue
-        score = text_hits * 10 + title_hits * 20
-        if normalized_query and normalized_query in title:
+        score = text_hits * 10 + title_hits * 20 + author_hits * 20
+        if normalized_query and (normalized_query in title or normalized_query in author):
             score += 100
-        if title_hits == len(tokens):
+        if title_hits == len(tokens) or author_hits == len(tokens):
             score += 50
         ranked.append((score, index, item))
 
