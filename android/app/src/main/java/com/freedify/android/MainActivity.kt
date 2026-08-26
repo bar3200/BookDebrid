@@ -2,6 +2,7 @@ package com.freedify.android
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -20,6 +21,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.webkit.WebSettings
 import android.webkit.JavascriptInterface
+import android.webkit.ValueCallback
 import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
@@ -28,12 +30,46 @@ import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import org.json.JSONObject
 
 class MainActivity : AppCompatActivity() {
     private lateinit var secureSettings: SecureSettings
     private var webView: WebView? = null
+    private var filePathCallback: ValueCallback<Array<Uri>>? = null
+    private var pendingExport: String? = null
+
+    private val fileChooserLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        val callback = filePathCallback
+        filePathCallback = null
+        callback?.onReceiveValue(
+            if (result.resultCode == Activity.RESULT_OK) {
+                WebChromeClient.FileChooserParams.parseResult(result.resultCode, result.data)
+            } else {
+                null
+            },
+        )
+    }
+
+    private val exportFileLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        val contents = pendingExport
+        pendingExport = null
+        val destination = result.data?.data
+        if (result.resultCode != Activity.RESULT_OK || contents == null || destination == null) return@registerForActivityResult
+        try {
+            val output = contentResolver.openOutputStream(destination)
+                ?: throw IllegalStateException("The selected destination cannot be opened")
+            output.bufferedWriter().use { it.write(contents) }
+            Toast.makeText(this, "Backup exported", Toast.LENGTH_SHORT).show()
+        } catch (error: Exception) {
+            Toast.makeText(this, "Could not export backup: ${error.message}", Toast.LENGTH_LONG).show()
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -178,14 +214,36 @@ class MainActivity : AppCompatActivity() {
             databaseEnabled = true
             mediaPlaybackRequiresUserGesture = false
             allowFileAccess = false
-            allowContentAccess = false
+            allowContentAccess = true
             cacheMode = WebSettings.LOAD_NO_CACHE
             userAgentString = "$userAgentString FreedifyAndroid/${BuildConfig.VERSION_NAME}"
         }
         browser.addJavascriptInterface(AndroidBridge(), "FreedifyAndroid")
         CookieManager.getInstance().setAcceptCookie(true)
         CookieManager.getInstance().setAcceptThirdPartyCookies(browser, true)
-        browser.webChromeClient = WebChromeClient()
+        browser.webChromeClient = object : WebChromeClient() {
+            override fun onShowFileChooser(
+                webView: WebView,
+                callback: ValueCallback<Array<Uri>>,
+                fileChooserParams: FileChooserParams,
+            ): Boolean {
+                filePathCallback?.onReceiveValue(null)
+                filePathCallback = callback
+                return try {
+                    fileChooserLauncher.launch(fileChooserParams.createIntent())
+                    true
+                } catch (error: Exception) {
+                    filePathCallback = null
+                    callback.onReceiveValue(null)
+                    Toast.makeText(
+                        this@MainActivity,
+                        "No compatible file picker is installed",
+                        Toast.LENGTH_LONG,
+                    ).show()
+                    false
+                }
+            }
+        }
         browser.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(
                 view: WebView,
@@ -241,6 +299,29 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun openApiKeySettings() {
             runOnUiThread { showSettingsDialog() }
+        }
+
+        @JavascriptInterface
+        fun saveTextFile(filename: String, mimeType: String, contents: String) {
+            runOnUiThread {
+                pendingExport = contents
+                val safeName = filename.replace(Regex("[^A-Za-z0-9._-]"), "_")
+                val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                    addCategory(Intent.CATEGORY_OPENABLE)
+                    type = mimeType.substringBefore(';').ifBlank { "text/plain" }
+                    putExtra(Intent.EXTRA_TITLE, safeName.ifBlank { "freedify_backup.json" })
+                }
+                try {
+                    exportFileLauncher.launch(intent)
+                } catch (error: Exception) {
+                    pendingExport = null
+                    Toast.makeText(
+                        this@MainActivity,
+                        "No compatible file saver is installed",
+                        Toast.LENGTH_LONG,
+                    ).show()
+                }
+            }
         }
 
         @JavascriptInterface

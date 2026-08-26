@@ -59,7 +59,7 @@ the first secret. Never commit the keystore or any password. Keep an encrypted,
 tested backup of the keystore and credentials: losing this signing identity
 means future APKs cannot update existing installations.
 
-Version `1.3.0` uses `versionCode` 5. Installations made from earlier workflow
+Version `1.3.1` uses `versionCode` 6. Installations made from earlier workflow
 debug artifacts have a different signature and therefore require a one-time
 uninstall before installing this release. That uninstall removes the app's
 stored settings, including the encrypted AllDebrid key. After installing this
@@ -91,6 +91,18 @@ place as long as their `versionCode` increases.
 - Android opens directly in audiobook mode. Search requests preserve the exact
   typed term, cancel stale in-flight searches, and filter unrelated fallback
   posts returned by AudiobookBay.
+- Music and podcast browsing remain available from the search-type row. Music
+  searches use directly playable Deezer results in the embedded build (Tidal's
+  lossless DASH path is skipped because it requires FFmpeg); YT Music and
+  SoundCloud searches remain available under **More**. Podcast search falls back
+  to Apple's public podcast directory without extra API keys, and RSS enclosure
+  audio streams through the same local backend. Local audio selection, queues,
+  playlists, favorites, history/resume, playback speed, and Android media-session
+  controls are shared with the audiobook player.
+- The bottom-player overflow is contextual and labeled: books get Book, Restart
+  chapter, Queue, and Repeat; podcasts get Restart episode, Queue, and Repeat;
+  music gets Queue, Repeat, Playlist, and Lyrics. Tapping a podcast's title or
+  author opens its episode details instead of starting an unrelated music search.
 - AllDebrid exposes the torrent's file tree, so multi-file books become one
   chapter per audio file. Freedify keeps nested disc/folder names, orders
   numbered filenames naturally (`2` before `10`), and uses AudiobookBay's title,
@@ -106,6 +118,21 @@ place as long as their `versionCode` increases.
 - On Android, the player overflow is reduced to labeled audiobook actions and
   Back closes the topmost menu or dialog before backgrounding the app. Tapping
   an audiobook chapter title opens its book instead of launching another search.
+- Android Settings only shows controls which work in the embedded runtime:
+  secure AllDebrid-key replacement, JSON backup export/import, local audio file
+  selection, private cache size/clearing, themes, and the external support link.
+  Android's system document picker handles backup and audio files. Backups never
+  include the AllDebrid key.
+- Spotify and Last.fm OAuth, LAN device sync, Supabase and Google Drive sync, DJ
+  mode, and desktop library-folder management remain available in the normal
+  server UI but are hidden in the APK. Their desktop OAuth callbacks, discovery
+  services, browser/native dependencies, or filesystem model are not part of
+  this self-contained Android build.
+- Desktop audio/ZIP download buttons and API-key-dependent Smart Playlist,
+  personalized recommendations, setlists, and concert search are hidden in the
+  APK. Text playlist exports and JSON backups use Android's native document
+  saver; binary download/transcoding would require an additional native download
+  pipeline and, for several formats, an FFmpeg build.
 - Cleartext networking is disabled except for `127.0.0.1`/`localhost`; external
   AllDebrid and content requests use HTTPS.
 

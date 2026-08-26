@@ -1971,6 +1971,10 @@ function generateCSV(tracks) {
 }
 
 function triggerDownload(content, filename, type) {
+    if (typeof window.FreedifyAndroid?.saveTextFile === 'function') {
+        window.FreedifyAndroid.saveTextFile(filename, type, content);
+        return;
+    }
     const blob = new Blob([content], { type: type });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');

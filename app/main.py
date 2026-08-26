@@ -525,6 +525,11 @@ async def search(
 
         # Helper coroutines for concurrent search
         async def _tidal_search():
+            # Tidal's lossless DASH streams require an FFmpeg remux. The
+            # self-contained Android build deliberately doesn't bundle an
+            # FFmpeg executable, so prefer the directly playable Deezer path.
+            if os.environ.get("ANDROID_EMBEDDED") == "1":
+                return []
             if type not in ["album", "track"]:
                 return []
             try:

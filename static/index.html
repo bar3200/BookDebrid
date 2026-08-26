@@ -18,7 +18,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Orbitron:wght@400;700;900&family=Permanent+Marker&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/styles.css?t=1787760002">
+    <link rel="stylesheet" href="/static/styles.css?t=1787760004">
     <!-- Google API for Drive sync -->
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="https://apis.google.com/js/api.js" async defer></script>
@@ -88,12 +88,13 @@
                     <div class="settings-section">
                         <h3 class="settings-section-title">Connections</h3>
                         <button class="settings-item android-only" id="android-api-key-btn">AllDebrid API key</button>
-                        <button class="settings-item" id="spotify-connect-btn">Connect Spotify</button>
-                        <button class="settings-item" id="lastfm-menu-btn">Connect Last.fm</button>
-                        <button class="settings-item" id="sync-menu-btn">Sync Devices</button>
+                        <p class="settings-hint android-only">Your key is encrypted in Android's secure app storage. Desktop-only account connections are hidden in the APK.</p>
+                        <button class="settings-item android-desktop-only" id="spotify-connect-btn">Connect Spotify</button>
+                        <button class="settings-item android-desktop-only" id="lastfm-menu-btn">Connect Last.fm</button>
+                        <button class="settings-item android-desktop-only" id="sync-menu-btn">Sync Devices</button>
                     </div>
                     <!-- Cloud Sync (Supabase) -->
-                    <div class="settings-section">
+                    <div class="settings-section android-desktop-only">
                         <h3 class="settings-section-title">Cloud Sync</h3>
                         <div id="cloud-sync-section">
                             <!-- Logged-out state -->
@@ -123,16 +124,17 @@
                     </div>
                     <!-- Cloud & Data -->
                     <div class="settings-section">
-                        <h3 class="settings-section-title">Cloud & Data</h3>
-                        <button class="settings-item" id="sync-btn">Sync to Google Drive</button>
+                        <h3 class="settings-section-title android-desktop-only">Cloud & Data</h3>
+                        <h3 class="settings-section-title android-only">Backup & Data</h3>
+                        <button class="settings-item android-desktop-only" id="sync-btn">Sync to Google Drive</button>
 
-                        <div class="settings-divider"></div>
+                        <div class="settings-divider android-desktop-only"></div>
                         <button class="settings-item" id="export-all-data-btn">Export All Data</button>
                         <button class="settings-item" id="import-all-data-btn">Import All Data</button>
                         <input type="file" id="import-all-data-input" accept=".json" class="hidden">
                     </div>
                     <!-- Playback -->
-                    <div class="settings-section">
+                    <div class="settings-section android-desktop-only">
                         <h3 class="settings-section-title">Playback</h3>
                         <button class="settings-item" id="dj-mode-btn">DJ Mode</button>
                     </div>
@@ -146,36 +148,38 @@
                     <div class="settings-section">
                         <h3 class="settings-section-title">Storage</h3>
 
-                        <!-- Library folder -->
-                        <label class="cache-size-label" for="library-folder-input">Library folder</label>
-                        <div class="folder-row">
-                            <input type="text" id="library-folder-input" class="settings-input folder-input"
-                                   placeholder="e.g. D:\Music" spellcheck="false" autocomplete="off">
-                            <button class="settings-item folder-browse-btn" id="library-folder-browse" title="Browse for a folder">Browse…</button>
-                        </div>
-                        <label class="folder-move-row" id="library-move-row">
-                            <input type="checkbox" id="library-move-checkbox">
-                            <span id="library-move-label">Move my current library to the new folder</span>
-                        </label>
-                        <div class="cache-btn-row">
-                            <button class="settings-item cache-btn-save" id="library-folder-save">Save Folder</button>
-                        </div>
-
-                        <div class="settings-divider"></div>
-
-                        <!-- Library mode toggle -->
-                        <div class="cache-toggle-row">
-                            <div class="cache-toggle-text">
-                                <span class="cache-toggle-title">Library mode</span>
-                                <span class="settings-hint" id="library-mode-hint">Save played tracks permanently, organized by Artist / Album.</span>
+                        <div class="android-desktop-only">
+                            <!-- Library folder -->
+                            <label class="cache-size-label" for="library-folder-input">Library folder</label>
+                            <div class="folder-row">
+                                <input type="text" id="library-folder-input" class="settings-input folder-input"
+                                       placeholder="e.g. D:\Music" spellcheck="false" autocomplete="off">
+                                <button class="settings-item folder-browse-btn" id="library-folder-browse" title="Browse for a folder">Browse…</button>
                             </div>
-                            <label class="toggle-switch">
-                                <input type="checkbox" id="library-mode-toggle">
-                                <span class="toggle-slider"></span>
+                            <label class="folder-move-row" id="library-move-row">
+                                <input type="checkbox" id="library-move-checkbox">
+                                <span id="library-move-label">Move my current library to the new folder</span>
                             </label>
-                        </div>
+                            <div class="cache-btn-row">
+                                <button class="settings-item cache-btn-save" id="library-folder-save">Save Folder</button>
+                            </div>
 
-                        <div class="settings-divider"></div>
+                            <div class="settings-divider"></div>
+
+                            <!-- Library mode toggle -->
+                            <div class="cache-toggle-row">
+                                <div class="cache-toggle-text">
+                                    <span class="cache-toggle-title">Library mode</span>
+                                    <span class="settings-hint" id="library-mode-hint">Save played tracks permanently, organized by Artist / Album.</span>
+                                </div>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="library-mode-toggle">
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
+
+                            <div class="settings-divider"></div>
+                        </div>
 
                         <p class="settings-hint" id="cache-usage">Played tracks are cached for instant replay.</p>
                         <div class="cache-size-row">
@@ -183,7 +187,8 @@
                             <input type="number" id="cache-size-input" class="settings-input cache-size-input"
                                    min="0.5" step="0.5" inputmode="decimal" aria-label="Maximum cache size in gigabytes">
                         </div>
-                        <p class="settings-hint">Minimum 0.5 GB. The cap applies to the temporary cache; your Library (when on) is permanent and never auto-deleted.</p>
+                        <p class="settings-hint android-desktop-only">Minimum 0.5 GB. The cap applies to the temporary cache; your Library (when on) is permanent and never auto-deleted.</p>
+                        <p class="settings-hint android-only">Minimum 0.5 GB. Cached audio stays in this app's private storage and can be cleared here.</p>
                         <div class="cache-btn-row">
                             <button class="settings-item cache-btn-save" id="cache-size-save">Save</button>
                             <button class="settings-item cache-btn-clear" id="cache-clear-btn">Clear Cache</button>
@@ -236,7 +241,7 @@
                 <button class="type-btn" data-type="podcast">Podcasts</button>
                 <button class="type-btn" data-type="audiobook">Audiobooks</button>
                 <button class="type-btn" data-type="favorites">Playlists</button>
-                <button class="type-btn" id="ai-menu-btn">Smart Playlist</button>
+                <button class="type-btn android-desktop-only" id="ai-menu-btn">Smart Playlist</button>
                 <button id="search-more-btn" class="type-btn more-btn">⋮ More</button>
             </div>
             
@@ -244,9 +249,9 @@
             <div id="search-more-menu" class="search-more-menu hidden">
                 <button class="menu-item type-btn-menu" data-type="ytmusic">YT Music</button>
                 <button class="menu-item type-btn-menu" data-type="soundcloud">SoundCloud</button>
-                <button class="menu-item type-btn-menu" data-type="rec">For You</button>
-                <button class="menu-item type-btn-menu" data-type="setlist">Setlists</button>
-                <button class="menu-item" id="concert-search-menu-btn">Concert Search</button>
+                <button class="menu-item type-btn-menu android-desktop-only" data-type="rec">For You</button>
+                <button class="menu-item type-btn-menu android-desktop-only" data-type="setlist">Setlists</button>
+                <button class="menu-item android-desktop-only" id="concert-search-menu-btn">Concert Search</button>
                 <div class="menu-divider"></div>
                 <a href="https://pally.gg/p/freedify" target="_blank" rel="noopener noreferrer" class="menu-item" style="text-decoration: none; color: inherit; display: block;">Donate</a>
             </div>
@@ -646,7 +651,7 @@
             <div id="player-more-menu" class="player-more-menu hidden">
                 <div class="more-menu-grid four-col">
                     <button id="player-book-btn" class="control-btn android-audiobook-action" title="Open book and chapters"><span aria-hidden="true">☷</span><span class="player-menu-label">Book</span></button>
-                    <button id="restart-chapter-btn" class="control-btn android-audiobook-action" title="Restart current chapter"><span aria-hidden="true">↤</span><span class="player-menu-label">Restart chapter</span></button>
+                    <button id="restart-chapter-btn" class="control-btn android-longform-action" title="Restart current item"><span aria-hidden="true">↤</span><span class="player-menu-label">Restart</span></button>
                     <button id="queue-btn" class="control-btn queue-toggle android-essential-action" title="Open queue"><span aria-hidden="true">☰</span><span class="player-menu-label">Queue</span></button>
                     <button id="repeat-btn" class="control-btn android-essential-action" title="Repeat: Off"><span aria-hidden="true">⟳</span><span class="player-menu-label">Repeat</span></button>
                     <button id="shuffle-queue-btn" class="control-btn" title="Shuffle queue"><span aria-hidden="true">⤭</span><span class="player-menu-label">Shuffle</span></button>
@@ -655,8 +660,8 @@
                     <button id="eq-toggle-btn" class="control-btn eq-btn" title="Equalizer"><span aria-hidden="true">🎛️</span><span class="player-menu-label">Equalizer</span></button>
                     <button id="ai-radio-btn" class="control-btn ai-radio-btn" title="AI Radio"><span aria-hidden="true">📻</span><span class="player-menu-label">AI Radio</span></button>
                     <button id="mini-player-btn" class="control-btn" title="Popout Winamp player"><span aria-hidden="true">⧉</span><span class="player-menu-label">Mini player</span></button>
-                    <button id="add-to-playlist-btn" class="control-btn" title="Add to playlist"><span aria-hidden="true">♡</span><span class="player-menu-label">Playlist</span></button>
-                    <button id="lyrics-btn" class="control-btn lyrics-btn" title="Lyrics"><span aria-hidden="true">≡</span><span class="player-menu-label">Lyrics</span></button>
+                    <button id="add-to-playlist-btn" class="control-btn android-music-action" title="Add to playlist"><span aria-hidden="true">♡</span><span class="player-menu-label">Playlist</span></button>
+                    <button id="lyrics-btn" class="control-btn lyrics-btn android-music-action" title="Lyrics"><span aria-hidden="true">≡</span><span class="player-menu-label">Lyrics</span></button>
                     <button id="video-btn" class="control-btn" title="Music video"><span aria-hidden="true">▣</span><span class="player-menu-label">Video</span></button>
                     <button id="menu-visualizer-btn" class="control-btn" title="Visualizer"><span aria-hidden="true">◒</span><span class="player-menu-label">Visualizer</span></button>
                 </div>
@@ -1087,6 +1092,6 @@
     <script src="static/jsmediatags.min.js"></script>
     <script src="https://apis.google.com/js/api.js"></script>
     <script src="https://accounts.google.com/gsi/client"></script>
-    <script type="module" src="/static/app.js?t=1787760002"></script>
+    <script type="module" src="/static/app.js?t=1787760004"></script>
 </body>
 </html>

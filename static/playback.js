@@ -209,10 +209,20 @@ export function updatePlayerUI() {
 
     playerBar.classList.remove('hidden');
     document.documentElement.classList.toggle('audiobook-playing', track.source === 'audiobook');
+    document.documentElement.classList.toggle('podcast-playing', track.source === 'podcast');
+    document.documentElement.classList.toggle('music-playing', track.source !== 'audiobook' && track.source !== 'podcast');
     playerTitle.textContent = track.name;
-    playerTitle.title = track.source === 'audiobook' ? 'Open book' : 'Search for this track';
+    playerTitle.title = track.source === 'audiobook'
+        ? 'Open book'
+        : track.source === 'podcast' ? 'Open episode details' : 'Search for this track';
     playerArtist.textContent = track.artists || '-';
-    playerArtist.title = track.source === 'audiobook' ? 'Open book' : 'Search artist';
+    playerArtist.title = track.source === 'audiobook'
+        ? 'Open book'
+        : track.source === 'podcast' ? 'Open episode details' : 'Search artist';
+
+    const restartLabel = restartChapterBtn?.querySelector('.player-menu-label');
+    if (restartLabel) restartLabel.textContent = track.source === 'audiobook' ? 'Restart chapter' : 'Restart episode';
+    if (restartChapterBtn) restartChapterBtn.title = track.source === 'audiobook' ? 'Restart current chapter' : 'Restart current episode';
 
     if (visualizerActive && showVisualizerInfoBriefly) {
         showVisualizerInfoBriefly();
@@ -1080,11 +1090,11 @@ playerBookBtn?.addEventListener('click', () => {
 
 restartChapterBtn?.addEventListener('click', () => {
     const track = state.queue[state.currentIndex];
-    if (!track || track.source !== 'audiobook') return;
+    if (!track || !['audiobook', 'podcast'].includes(track.source)) return;
     clearEpisodePosition(track.id);
     delete track._resumeAt;
     getActivePlayer().currentTime = chapterStart(track);
-    showToast('Restarted this chapter');
+    showToast(track.source === 'audiobook' ? 'Restarted this chapter' : 'Restarted this episode');
     playerMoreMenu?.classList.add('hidden');
 });
 
@@ -1098,6 +1108,10 @@ playerTitle.addEventListener('click', () => {
         const track = state.queue[state.currentIndex];
         if (track.source === 'audiobook') {
             emit('openAudiobookFromPlayer', track);
+            return;
+        }
+        if (track.source === 'podcast' && showPodcastModal) {
+            showPodcastModal(track);
             return;
         }
         if (performSearch) performSearch(track.name + " " + track.artists);
@@ -1118,6 +1132,8 @@ playerArtist.addEventListener('click', () => {
         const track = state.queue[state.currentIndex];
         if (track.source === 'audiobook') {
             emit('openAudiobookFromPlayer', track);
+        } else if (track.source === 'podcast' && showPodcastModal) {
+            showPodcastModal(track);
         } else if (performSearch) {
             performSearch(track.artists);
         }

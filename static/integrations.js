@@ -2333,19 +2333,23 @@ function exportAllData() {
         };
 
         const json = JSON.stringify(backup, null, 2);
-        const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
-        const url = URL.createObjectURL(blob);
-
         const date = new Date().toISOString().slice(0, 10);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `freedify_backup_${date}.json`;
-        document.body.appendChild(a);
-        a.click();
-        setTimeout(() => {
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-        }, 100);
+        const filename = `freedify_backup_${date}.json`;
+        if (typeof window.FreedifyAndroid?.saveTextFile === 'function') {
+            window.FreedifyAndroid.saveTextFile(filename, 'application/json', json);
+        } else {
+            const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => {
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }, 100);
+        }
 
         const counts = [
             `${state.playlists.length} playlists`,

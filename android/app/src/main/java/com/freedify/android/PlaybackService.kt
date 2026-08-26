@@ -179,7 +179,7 @@ class PlaybackService : Service() {
                 getString(R.string.notification_channel_name),
                 NotificationManager.IMPORTANCE_LOW,
             ).apply {
-                description = "Playback controls for Freedify audiobooks"
+                description = "Playback controls for Freedify audio"
                 setShowBadge(false)
             }
             getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
