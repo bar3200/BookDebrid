@@ -411,6 +411,8 @@ export function addAudiobookFavorite(book) {
         artwork: book.album_art || book.cover_image || book.artwork || '/static/icon.svg',
         folder_id: book.folder_id || null,
         premiumize_id: book.premiumize_id || null,
+        debrid_provider: book.debrid_provider || null,
+        debrid_id: book.debrid_id || null,
         addedAt: Date.now()
     });
     saveAudiobookFavorites();

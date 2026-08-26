@@ -66,9 +66,9 @@ Open [http://localhost:8000](http://localhost:8000) and start streaming! 🎵
 - **Queue & Download** - Episodes seamlessly integrate with the player queue and can be downloaded
 
 ### 📚 Audiobooks
-- **Important Note:** Streaming audiobooks currently **requires a Premiumize.me account** for caching the torrents. If you use Real-Debrid, All-Debrid, or another service, we invite you to fork Freedify and submit a PR to add support for your preferred debrid service (as we currently lack accounts to test them with)!
+- **Important Note:** Streaming audiobooks requires a **Premiumize.me or AllDebrid account** for caching torrents. Configure the matching API key; if both are configured, you can choose the provider in the audiobook dialog.
 - **My Books** - Audiobook bookshelf to save, organize, and resume your audiobooks
-- **AudiobookBay Search** - Search and download audiobooks via AudiobookBay + Premiumize integration
+- **AudiobookBay Search** - Search and download audiobooks via AudiobookBay with Premiumize or AllDebrid
 - **Book Info Modal** - Click any book for cover art, description, chapters, and play/resume controls
 - **Goodreads Reviews** - Integrated ratings, genres, and top community reviews from Goodreads
 - **Resume Playback** - Cached audiobook tracks resume where you left off — even from the bookshelf
@@ -467,7 +467,9 @@ When deploying to Render (or other hosts), set these in your Dashboard:
 |----------|-------------|
 | `SUPABASE_URL` | For Cloud Sync — Project URL from Supabase dashboard (Project Settings → API) |
 | `SUPABASE_SERVICE_KEY` | For Cloud Sync — Service Role key from Supabase dashboard (never use anon key) |
-| `PREMIUMIZE_API_KEY` | **Required for Audiobooks** - Get at premiumize.me/account |
+| `PREMIUMIZE_API_KEY` | Optional audiobook provider - get at premiumize.me/account |
+| `ALLDEBRID_API_KEY` | Optional audiobook provider - get from your AllDebrid API keys page |
+| `AUDIOBOOK_DEBRID_PROVIDER` | Default audiobook provider when both keys are configured: `premiumize` or `alldebrid` |
 | `PODCASTINDEX_KEY` | For Podcast Search (better results) |
 | `PODCASTINDEX_SECRET` | For Podcast Search (required if KEY is used) |
 | `SETLIST_FM_API_KEY` | For Setlist.fm concert search (free at setlist.fm/settings/api) |

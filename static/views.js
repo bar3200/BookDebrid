@@ -650,13 +650,16 @@ function openBookInfoModal(book) {
     // Delete from Cloud button
     const deleteBtn = document.getElementById('book-info-delete-btn');
     // Show if we have IDs OR if we have cached tracks (we can pull IDs from them)
-    if (book.folder_id || book.premiumize_id || (book.cachedTracks && book.cachedTracks.length > 0)) {
+    if (book.debrid_id || book.folder_id || book.premiumize_id || (book.cachedTracks && book.cachedTracks.length > 0)) {
         deleteBtn.classList.remove('hidden');
         deleteBtn.onclick = async () => {
-            if (!confirm(`Are you sure you want to delete "${book.name}" from your Premiumize cloud? This cannot be undone.`)) return;
+            const cachedTrack = book.cachedTracks && book.cachedTracks[0];
+            const provider = book.debrid_provider || cachedTrack?.debrid_provider || 'premiumize';
+            const providerLabel = getAudiobookProviderLabel(provider);
+            if (!confirm(`Are you sure you want to delete "${book.name}" from your ${providerLabel} cloud? This cannot be undone.`)) return;
 
             // Try to get ID from various places
-            let itemId = book.folder_id || book.premiumize_id;
+            let itemId = book.debrid_id || cachedTrack?.debrid_id || book.folder_id || book.premiumize_id;
             let isTransfer = !!book.premiumize_id && !book.folder_id;
 
             if (!itemId && book.cachedTracks && book.cachedTracks.length > 0) {
@@ -679,7 +682,7 @@ function openBookInfoModal(book) {
             deleteBtn.textContent = '⏳ Deleting...';
 
             try {
-                const response = await fetch('/api/premiumize/delete', {
+                const response = await fetch(`/api/debrid/${provider}/delete`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ id: itemId, is_transfer: isTransfer })
@@ -1995,8 +1998,56 @@ const audiobookModal = $('#audiobook-modal');
 const audiobookCloseBtn = $('#audiobook-modal-close');
 let currentAudiobookDetails = null;
 let audiobookPollInterval = null;
+let audiobookDebridConfig = null;
+
+async function loadAudiobookDebridConfig() {
+    if (audiobookDebridConfig) return audiobookDebridConfig;
+    const response = await fetch('/api/debrid/config');
+    if (!response.ok) throw new Error('Could not load audiobook cloud configuration');
+    audiobookDebridConfig = await response.json();
+
+    const select = $('#audiobook-provider-select');
+    const saved = localStorage.getItem('freedify_audiobook_debrid_provider');
+    select.innerHTML = audiobookDebridConfig.providers.map(provider =>
+        `<option value="${provider}">${audiobookDebridConfig.labels[provider] || provider}</option>`
+    ).join('');
+    select.value = audiobookDebridConfig.providers.includes(saved)
+        ? saved
+        : audiobookDebridConfig.default_provider;
+    const container = $('#audiobook-provider-container');
+    container.classList.toggle('hidden', audiobookDebridConfig.providers.length < 2);
+    container.style.display = audiobookDebridConfig.providers.length < 2 ? 'none' : 'block';
+    return audiobookDebridConfig;
+}
+
+function getAudiobookProvider() {
+    return $('#audiobook-provider-select')?.value || audiobookDebridConfig?.default_provider || 'premiumize';
+}
+
+function getAudiobookProviderLabel(provider = getAudiobookProvider()) {
+    return audiobookDebridConfig?.labels?.[provider] || (provider === 'alldebrid' ? 'AllDebrid' : 'Premiumize');
+}
+
+function makeDebridTrackIsrc(file, provider) {
+    const value = provider === 'alldebrid' && file.source_link ? file.source_link : (file.stream_link || file.directlink || file.link);
+    const prefix = provider === 'alldebrid' && file.source_link ? 'ALLDEBRID:' : 'LINK:';
+    return `${prefix}${btoa(value).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')}`;
+}
 
 function initAudiobooks() {
+    loadAudiobookDebridConfig().catch(e => console.error('Debrid config error', e));
+    const providerSelect = $('#audiobook-provider-select');
+    if (providerSelect) {
+        providerSelect.addEventListener('change', () => {
+            localStorage.setItem('freedify_audiobook_debrid_provider', providerSelect.value);
+            if (currentAudiobookDetails) {
+                const btn = $('#audiobook-download-btn');
+                btn.textContent = `☁️ Download to ${getAudiobookProviderLabel()}`;
+                btn.onclick = () => startAudiobookDownload(currentAudiobookDetails.magnet_link);
+                checkExistingAudiobook(currentAudiobookDetails.title);
+            }
+        });
+    }
     if (audiobookCloseBtn) {
         audiobookCloseBtn.addEventListener('click', () => {
             audiobookModal.classList.add('hidden');
@@ -2011,6 +2062,7 @@ function initAudiobooks() {
 async function openAudiobook(id) {
     showLoading('Fetching audiobook details...');
     try {
+        await loadAudiobookDebridConfig();
         const response = await fetch(`/api/audiobooks/details?id=${encodeURIComponent(id)}`);
         if (!response.ok) throw new Error('Failed to fetch audiobook details');
         const details = await response.json();
@@ -2025,7 +2077,7 @@ async function openAudiobook(id) {
 
         // Reset UI
         const btn = $('#audiobook-download-btn');
-        btn.textContent = '☁️ Download to Premiumize';
+        btn.textContent = `☁️ Download to ${getAudiobookProviderLabel()}`;
         btn.disabled = false;
 
         let favBtn = $('#audiobook-fav-btn');
@@ -2059,7 +2111,7 @@ async function openAudiobook(id) {
         $('#audiobook-progress-percent').textContent = '0%';
         $('#audiobook-progress-fill').style.width = '0%';
 
-        // Check if it's already in Premiumize by searching the title (optimistic check)
+        // Check the selected cloud for an existing ready copy (optimistic check)
         checkExistingAudiobook(details.title);
 
         btn.onclick = () => startAudiobookDownload(details.magnet_link);
@@ -2074,21 +2126,22 @@ async function openAudiobook(id) {
 
 async function checkExistingAudiobook(title) {
     try {
-        // Search Premiumize for the exact title
+        const provider = getAudiobookProvider();
+        const providerLabel = getAudiobookProviderLabel(provider);
         // Torrents often have weird names, so we might not find it, which is fine
-        const { folder, audioFiles } = await searchPremiumizeForAudiobook(title);
+        const { folder, audioFiles } = await searchDebridForAudiobook(title, provider);
 
         if (folder || audioFiles.length > 0) {
             if (folder) {
                 const btn = $('#audiobook-download-btn');
-                btn.textContent = '▶ Play from Premiumize Cache';
-                btn.onclick = () => loadAudiobookFolder(folder.id, currentAudiobookDetails);
-                showToast('Found in Premiumize cache!');
+                btn.textContent = `▶ Play from ${providerLabel} Cache`;
+                btn.onclick = () => loadAudiobookFolder(folder.id, currentAudiobookDetails, provider);
+                showToast(`Found in ${providerLabel} cache!`);
             } else if (audioFiles.length > 0) {
                 const btn = $('#audiobook-download-btn');
-                btn.textContent = '▶ Play from Premiumize Cache';
-                btn.onclick = () => processDirectAudioFiles(audioFiles, currentAudiobookDetails);
-                showToast('Found in Premiumize cache!');
+                btn.textContent = `▶ Play from ${providerLabel} Cache`;
+                btn.onclick = () => processDirectAudioFiles(audioFiles, currentAudiobookDetails, provider);
+                showToast(`Found in ${providerLabel} cache!`);
             }
         }
     } catch (e) {
@@ -2096,7 +2149,7 @@ async function checkExistingAudiobook(title) {
     }
 }
 
-async function searchPremiumizeForAudiobook(title) {
+async function searchDebridForAudiobook(title, provider = getAudiobookProvider()) {
     try {
         // Extract the two longest unique significant words from the title for a more specific query
         const getLongestWords = (str) => {
@@ -2104,8 +2157,9 @@ async function searchPremiumizeForAudiobook(title) {
             return [...new Set(words)].slice(0, 2).join(' ');
         };
         const searchWord = getLongestWords(title) || title.split(' ')[0];
-        const response = await fetch(`/api/premiumize/search?q=${encodeURIComponent(searchWord)}`);
+        const response = await fetch(`/api/debrid/${provider}/search?q=${encodeURIComponent(searchWord)}`);
         const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || 'Cloud search failed');
 
         if (!data || !data.results || data.results.length === 0) {
             return { folder: null, audioFiles: [] };
@@ -2132,29 +2186,30 @@ async function searchPremiumizeForAudiobook(title) {
 
         return { folder, audioFiles };
     } catch (e) {
-        console.error("Premiumize search failed", e);
+        console.error(`${getAudiobookProviderLabel(provider)} search failed`, e);
         return { folder: null, audioFiles: [] };
     }
 }
 
-function processDirectAudioFiles(audioFiles, details) {
+function processDirectAudioFiles(audioFiles, details, provider = getAudiobookProvider(), itemId = null) {
     audioFiles.sort((a, b) => a.name.localeCompare(b.name));
     audiobookModal.classList.add('hidden');
 
     const mappedTracks = audioFiles.map((file, index) => {
-        const streamUrl = file.stream_link || file.directlink || file.link;
         const stableId = `ab_${details.title}_${file.name}`.replace(/[^a-zA-Z0-9_]/g, '_');
 
         return {
             id: stableId,
-            isrc: `LINK:${btoa(streamUrl).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')}`,
+            isrc: makeDebridTrackIsrc(file, provider),
             name: file.name.replace(/\.[^/.]+$/, ""),
             artists: details.author || 'Unknown Author',
             album: details.title,
             album_art: details.cover_image || '/static/icon.svg',
             duration: '0:00',
             source: 'audiobook',
-            track_number: index + 1
+            track_number: index + 1,
+            debrid_provider: provider,
+            debrid_id: itemId
         };
     });
 
@@ -2174,6 +2229,8 @@ function processDirectAudioFiles(audioFiles, details) {
     if (favIdx !== -1) {
         state.audiobookFavorites[favIdx].cachedTracks = mappedTracks;
         state.audiobookFavorites[favIdx].cachedAt = Date.now();
+        state.audiobookFavorites[favIdx].debrid_provider = provider;
+        state.audiobookFavorites[favIdx].debrid_id = itemId;
         if (details.description) {
             state.audiobookFavorites[favIdx].description = details.description;
         }
@@ -2185,38 +2242,41 @@ function processDirectAudioFiles(audioFiles, details) {
 
 async function startAudiobookDownload(magnetLink) {
     const btn = $('#audiobook-download-btn');
+    const provider = getAudiobookProvider();
     btn.disabled = true;
     btn.textContent = 'Starting Transfer...';
     $('#audiobook-progress-container').classList.remove('hidden');
 
     try {
-        const response = await fetch('/api/premiumize/transfer', {
+        const response = await fetch(`/api/debrid/${provider}/transfer`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ magnet_link: magnetLink })
         });
         const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || 'Failed to start transfer');
 
         if (data.status === 'success') {
-            pollAudiobookTransfer(data.id || data.transfer_id); // The id depends on the exact API response
+            pollAudiobookTransfer(data.id || data.transfer_id, provider); // The id depends on the exact API response
         } else {
-            throw new Error(data.message || 'Failed to start transfer');
+            throw new Error(data.detail || data.message || 'Failed to start transfer');
         }
     } catch (e) {
         btn.disabled = false;
-        btn.textContent = '☁️ Download to Premiumize';
+        btn.textContent = `☁️ Download to ${getAudiobookProviderLabel(provider)}`;
         showError(e.message);
     }
 }
 
-async function pollAudiobookTransfer(transferId) {
+async function pollAudiobookTransfer(transferId, provider = getAudiobookProvider()) {
     if (audiobookPollInterval) clearInterval(audiobookPollInterval);
 
     // Fallback if transferId is missing from create transfer response
     const fetchStatus = async () => {
         try {
-            const res = await fetch(`/api/premiumize/transfer/${transferId || ''}`);
+            const res = await fetch(`/api/debrid/${provider}/transfer/${transferId || ''}`);
             const data = await res.json();
+            if (!res.ok) throw new Error(data.detail || 'Transfer status request failed');
 
             let transfer = null;
             if (transferId && data.transfer && !Array.isArray(data.transfer)) {
@@ -2231,7 +2291,7 @@ async function pollAudiobookTransfer(transferId) {
                 clearInterval(audiobookPollInterval);
                 audiobookPollInterval = null;
                 // Now try to find the folder it created
-                autoFindFinishedFolder();
+                autoFindFinishedFolder(provider, transferId);
                 return;
             }
 
@@ -2242,6 +2302,15 @@ async function pollAudiobookTransfer(transferId) {
             $('#audiobook-progress-fill').style.width = `${progress}%`;
             $('#audiobook-progress-status').textContent = statusStr;
 
+            if (transfer.status === 'error') {
+                clearInterval(audiobookPollInterval);
+                audiobookPollInterval = null;
+                $('#audiobook-download-btn').disabled = false;
+                $('#audiobook-download-btn').textContent = `☁️ Download to ${getAudiobookProviderLabel(provider)}`;
+                showError(statusStr);
+                return;
+            }
+
             if (transfer.status === 'finished' || progress >= 100) {
                 clearInterval(audiobookPollInterval);
                 audiobookPollInterval = null;
@@ -2250,9 +2319,9 @@ async function pollAudiobookTransfer(transferId) {
 
                 // If we get the folder ID directly from the transfer object
                 if (transfer.folder_id) {
-                    loadAudiobookFolder(transfer.folder_id, currentAudiobookDetails);
+                    loadAudiobookFolder(transfer.folder_id, currentAudiobookDetails, provider);
                 } else {
-                    autoFindFinishedFolder();
+                    autoFindFinishedFolder(provider, transferId);
                 }
             }
 
@@ -2265,20 +2334,21 @@ async function pollAudiobookTransfer(transferId) {
     fetchStatus(); // immediate run
 }
 
-async function autoFindFinishedFolder() {
+async function autoFindFinishedFolder(provider = getAudiobookProvider(), transferId = null) {
     try {
-        const { folder, audioFiles } = await searchPremiumizeForAudiobook(currentAudiobookDetails.title);
+        const { folder, audioFiles } = await searchDebridForAudiobook(currentAudiobookDetails.title, provider);
 
         if (folder) {
-            loadAudiobookFolder(folder.id, currentAudiobookDetails);
+            loadAudiobookFolder(folder.id, currentAudiobookDetails, provider);
         } else if (audioFiles.length > 0) {
-            processDirectAudioFiles(audioFiles, currentAudiobookDetails);
+            processDirectAudioFiles(audioFiles, currentAudiobookDetails, provider, transferId);
         } else {
-            $('#audiobook-progress-status').textContent = 'Completed, but could not locate folder. Check your Premiumize web interface.';
+            const providerLabel = getAudiobookProviderLabel(provider);
+            $('#audiobook-progress-status').textContent = `Completed, but could not locate files. Check your ${providerLabel} web interface.`;
             $('#audiobook-progress-percent').textContent = '';
             $('#audiobook-download-btn').disabled = false;
-            $('#audiobook-download-btn').textContent = 'Open Premiumize';
-            $('#audiobook-download-btn').onclick = () => window.open('https://www.premiumize.me/files', '_blank');
+            $('#audiobook-download-btn').textContent = `Open ${providerLabel}`;
+            $('#audiobook-download-btn').onclick = () => window.open(audiobookDebridConfig.web_urls[provider], '_blank');
         }
     } catch (e) {
         console.error(e);
@@ -2286,11 +2356,12 @@ async function autoFindFinishedFolder() {
     }
 }
 
-async function loadAudiobookFolder(folderId, audiobookDetails) {
-    showLoading('Loading audiobook tracks from Premiumize...');
+async function loadAudiobookFolder(folderId, audiobookDetails, provider = getAudiobookProvider()) {
+    showLoading(`Loading audiobook tracks from ${getAudiobookProviderLabel(provider)}...`);
     try {
-        const response = await fetch(`/api/premiumize/folder/${folderId}`);
+        const response = await fetch(`/api/debrid/${provider}/files/${folderId}`);
         const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || 'Failed to load audiobook files');
         hideLoading();
 
         let audioFiles = data.audio_files || [];
@@ -2298,8 +2369,9 @@ async function loadAudiobookFolder(folderId, audiobookDetails) {
         // If empty, maybe it's nested in a subfolder. Let's recursively check (max 1 deep for simplicity)
         if (audioFiles.length === 0 && data.folders && data.folders.length > 0) {
             const subFolderId = data.folders[0].id;
-            const subRes = await fetch(`/api/premiumize/folder/${subFolderId}`);
+            const subRes = await fetch(`/api/debrid/${provider}/files/${subFolderId}`);
             const subData = await subRes.json();
+            if (!subRes.ok) throw new Error(subData.detail || 'Failed to load nested audiobook files');
             audioFiles = subData.audio_files || [];
         }
 
@@ -2313,21 +2385,22 @@ async function loadAudiobookFolder(folderId, audiobookDetails) {
 
         const mappedTracks = audioFiles.map((file, index) => {
             // Use stream_link if available, fallback to directlink for actual media access
-            const streamUrl = file.stream_link || file.directlink || file.link;
             // Use a STABLE ID based on filename + audiobook title (stream URLs expire and change)
             const stableId = `ab_${audiobookDetails.title}_${file.name}`.replace(/[^a-zA-Z0-9_]/g, '_');
             return {
                 id: stableId,
-                isrc: `LINK:${btoa(streamUrl).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')}`,
+                isrc: makeDebridTrackIsrc(file, provider),
                 name: file.name.replace(/\.[^/.]+$/, ""), // Remove extension
                 artists: audiobookDetails.title,
-            album: audiobookDetails.title,
-            album_art: audiobookDetails.cover_image || '/static/icon.svg',
-            duration: '0:00', // We don't have duration upfront
-            source: 'audiobook', // Mark as audiobook so it uses the podcast resume logic!
-            track_number: index + 1
-        };
-    });
+                album: audiobookDetails.title,
+                album_art: audiobookDetails.cover_image || '/static/icon.svg',
+                duration: '0:00', // We don't have duration upfront
+                source: 'audiobook', // Mark as audiobook so it uses the podcast resume logic!
+                track_number: index + 1,
+                debrid_provider: provider,
+                debrid_id: folderId
+            };
+        });
 
         const albumData = {
             id: `ab_${folderId}`,
@@ -2339,14 +2412,16 @@ async function loadAudiobookFolder(folderId, audiobookDetails) {
 
         showDetailView(albumData, mappedTracks);
 
-        // Cache the mapped tracks into the audiobookFavorites entry
-        // so subsequent plays from My Books don't need to re-fetch from Premiumize
+        // Auto-save and cache tracks so later plays don't need another cloud request.
+        addAudiobookFavorite(audiobookDetails);
         const favIdx = state.audiobookFavorites.findIndex(b =>
             b.name === audiobookDetails.title || b.id === audiobookDetails.id
         );
         if (favIdx !== -1) {
             state.audiobookFavorites[favIdx].cachedTracks = mappedTracks;
             state.audiobookFavorites[favIdx].cachedAt = Date.now();
+            state.audiobookFavorites[favIdx].debrid_provider = provider;
+            state.audiobookFavorites[favIdx].debrid_id = folderId;
             // Cache the description from AudiobookBay for the book info modal
             if (audiobookDetails.description) {
                 state.audiobookFavorites[favIdx].description = audiobookDetails.description;

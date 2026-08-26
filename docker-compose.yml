@@ -33,6 +33,8 @@ services:
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
       - JAMENDO_CLIENT_ID=${JAMENDO_CLIENT_ID:-}
       - PREMIUMIZE_API_KEY=${PREMIUMIZE_API_KEY:-}
+      - ALLDEBRID_API_KEY=${ALLDEBRID_API_KEY:-}
+      - AUDIOBOOK_DEBRID_PROVIDER=${AUDIOBOOK_DEBRID_PROVIDER:-premiumize}
     volumes:
       # Persist cache for faster repeated plays
       - freedify-cache:/app/cache
