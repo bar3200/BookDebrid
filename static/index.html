@@ -1092,6 +1092,50 @@
     <script src="static/jsmediatags.min.js"></script>
     <script src="https://apis.google.com/js/api.js"></script>
     <script src="https://accounts.google.com/gsi/client"></script>
-    <script type="module" src="/static/app.js?t=1787760004"></script>
+    <script type="module">
+        const appUrl = '/static/app.js?t=1787760005';
+        const isAndroidApp = document.documentElement.classList.contains('android-app');
+
+        async function prepareAndroidRuntime() {
+            if (!isAndroidApp || !('serviceWorker' in navigator)) return;
+
+            const cleanupVersion = 'freedify-android-cache-cleanup-v7';
+            const hadController = Boolean(navigator.serviceWorker.controller);
+            try {
+                const registrations = await navigator.serviceWorker.getRegistrations();
+                await Promise.all(registrations.map((registration) => registration.unregister()));
+                if ('caches' in window) {
+                    const cacheNames = await caches.keys();
+                    await Promise.all(cacheNames.map((name) => caches.delete(name)));
+                }
+            } catch (error) {
+                console.warn('Android web cache cleanup failed', error);
+            }
+
+            // An unregistered worker can continue controlling the document
+            // which loaded it. Reload once so every ES module comes directly
+            // from the embedded backend. sessionStorage and localStorage are
+            // intentionally preserved, including books and resume positions.
+            if (hadController && !sessionStorage.getItem(cleanupVersion)) {
+                sessionStorage.setItem(cleanupVersion, '1');
+                location.reload();
+                await new Promise(() => {});
+            }
+        }
+
+        function showStartupFailure(error) {
+            console.error('Freedify startup failed', error);
+            const overlay = document.getElementById('error-message');
+            const message = document.getElementById('error-text');
+            const retry = document.getElementById('error-retry');
+            if (message) message.textContent = 'Freedify could not start. Close and reopen the app to retry.';
+            if (retry) retry.onclick = () => location.reload();
+            if (overlay) overlay.classList.remove('hidden');
+        }
+
+        prepareAndroidRuntime()
+            .then(() => import(appUrl))
+            .catch(showStartupFailure);
+    </script>
 </body>
 </html>

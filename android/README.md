@@ -59,7 +59,7 @@ the first secret. Never commit the keystore or any password. Keep an encrypted,
 tested backup of the keystore and credentials: losing this signing identity
 means future APKs cannot update existing installations.
 
-Version `1.3.1` uses `versionCode` 6. Installations made from earlier workflow
+Version `1.3.2` uses `versionCode` 7. Installations made from earlier workflow
 debug artifacts have a different signature and therefore require a one-time
 uninstall before installing this release. That uninstall removes the app's
 stored settings, including the encrypted AllDebrid key. After installing this
@@ -71,6 +71,11 @@ place as long as their `versionCode` increases.
 - The normal Python backend and static UI are copied into the APK at build time.
   App data and audiobook cache metadata are redirected to Android's private app
   storage.
+- The embedded app disables and removes web service-worker caches during
+  startup. The backend is already local and always available, while retaining a
+  worker across APK updates can mix old and new JavaScript modules and leave the
+  interface unresponsive. This cleanup does not clear local settings, saved
+  books, history, or resume positions.
 - Selenium/ChromeDriver cannot run inside this packaging model. On Android,
   AudiobookBay search and detail loading use a direct HTTP/HTML fallback. If the
   site blocks that fallback, paste a direct AudiobookBay book URL; the error in

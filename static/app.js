@@ -406,7 +406,7 @@ window.FreedifyAndroidNavigation = {
 };
 
 // ========== SERVICE WORKER ==========
-if ('serviceWorker' in navigator) {
+if ('serviceWorker' in navigator && !document.documentElement.classList.contains('android-app')) {
     navigator.serviceWorker.register('/sw.js').catch(console.error);
 }
 

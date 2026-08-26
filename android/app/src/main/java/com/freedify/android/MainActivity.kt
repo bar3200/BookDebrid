@@ -274,7 +274,7 @@ class MainActivity : AppCompatActivity() {
         }
         if (BuildConfig.DEBUG) WebView.setWebContentsDebuggingEnabled(true)
         setContentView(browser)
-        browser.loadUrl(FREEDIFY_URL)
+        browser.loadUrl("$FREEDIFY_URL?apkVersion=${BuildConfig.VERSION_CODE}")
     }
 
     override fun onBackPressed() {
