@@ -3,7 +3,7 @@
 
 import { state } from './state.js';
 import { emit, on } from './event-bus.js';
-import { showToast, escapeHtml, formatTime, getTimeSince, parseDuration } from './utils.js';
+import { showToast, escapeHtml, formatTime, formatDuration, getTimeSince, parseDuration } from './utils.js';
 import { $, $$, resultsSection, resultsContainer, detailView, detailInfo, detailTracks, searchInput } from './dom.js';
 import { showLoading, hideLoading, showError } from './ui.js';
 import {
@@ -310,7 +310,7 @@ function renderMyPodcastsView() {
                                 <p class="track-artist">${escapeHtml(ep.artists)}${resumeText}</p>
                             </div>
                             <div class="track-actions">
-                                <span class="track-duration">${ep.duration || ''}</span>
+                                <span class="track-duration">${formatDuration(ep.duration, '')}</span>
                                 <button class="episode-played-btn ${played ? 'played' : ''}" data-episode-id="${ep.id}" title="${played ? 'Mark as unplayed' : 'Mark as played'}">
                                     ${played ? '✅' : '⬜'}
                                 </button>
@@ -477,7 +477,7 @@ function renderMyBooksView() {
                                 <p class="track-artist">${escapeHtml(ep.artists)}${resumeText}</p>
                             </div>
                             <div class="track-actions">
-                                <span class="track-duration">${ep.duration || ''}</span>
+                                <span class="track-duration">${formatDuration(ep.duration, '')}</span>
                             </div>
                         </div>
                     `;
@@ -1287,7 +1287,7 @@ function showAlbumModal(album) {
             <div class="track-row-actions">
                 <button class="star-btn ${isStarred ? 'starred' : ''}" data-track-id="${track.id}" data-index="${i}" title="${isStarred ? 'Remove from Library' : 'Add to Library'}">${isStarred ? '★' : '☆'}</button>
                 <button class="album-track-playlist" title="Add to Playlist" data-index="${i}">♡</button>
-                <span class="album-track-duration">${typeof track.duration === 'number' ? formatTime(track.duration) : (track.duration || '--:--')}</span>
+                <span class="album-track-duration">${formatDuration(track.duration)}</span>
                 <button title="Add to Queue" data-action="queue" data-index="${i}">+</button>
                 <button title="Download" data-action="download" data-index="${i}">⬇</button>
             </div>
@@ -1535,7 +1535,7 @@ function showDetailView(item, tracks) {
 
             <div class="track-actions">
                 ${renderDJBadgeForTrack(t)}
-                <span class="track-duration">${t.duration}</span>
+                <span class="track-duration">${formatDuration(t.duration)}</span>
                 <button class="star-btn ${isStarred ? 'starred' : ''}" data-track-id="${t.id}" title="${isStarred ? 'Remove from Library' : 'Add to Library'}">${isStarred ? '★' : '☆'}</button>
                 <button class="playlist-btn" title="Add to Playlist" onclick="event.stopPropagation(); if(typeof window.openAddToPlaylistModal === 'function') window.openAddToPlaylistModal(JSON.parse(decodeURIComponent('${encodeURIComponent(JSON.stringify(t)).replace(/'/g, "%27")}')))">♡</button>
                 <button class="download-btn" title="Download" onclick="event.stopPropagation(); openDownloadModal('${encodeURIComponent(JSON.stringify(t)).replace(/'/g, "%27")}')">
@@ -1586,7 +1586,7 @@ function showPodcastModal(trackJson) {
         podcastModalArt.src = track.album_art || '/static/icon.svg';
         podcastModalTitle.textContent = track.name;
         podcastModalDate.textContent = track.datePublished || '';
-        podcastModalDuration.textContent = `Duration: ${track.duration}`;
+        podcastModalDuration.textContent = `Duration: ${formatDuration(track.duration)}`;
 
         // Strip HTML tags from description and decode entities
         const tempDiv = document.createElement('div');

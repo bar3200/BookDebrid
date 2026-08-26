@@ -4,11 +4,23 @@
  */
 
 export function formatTime(seconds) {
-    if (!seconds || isNaN(seconds)) return '0:00';
+    if (seconds == null || seconds === '' || isNaN(seconds)) return '0:00';
     seconds = Math.floor(seconds);
-    const mins = Math.floor(seconds / 60);
+    const hours = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
     const secs = Math.floor(seconds % 60);
+    if (hours > 0) {
+        return `${hours}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
     return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
+export function formatDuration(value, fallback = '--:--') {
+    if (value == null || value === '') return fallback;
+    if (typeof value === 'number' || (typeof value === 'string' && /^\d+(?:\.\d+)?$/.test(value.trim()))) {
+        return formatTime(Number(value));
+    }
+    return String(value);
 }
 
 export function escapeHtml(text) {
