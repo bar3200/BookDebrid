@@ -36,9 +36,10 @@ UI in a WebView, and stores the AllDebrid API key encrypted with Android
 Keystore. No separately hosted Freedify server is required for the AllDebrid
 audiobook flow.
 
-Download the `freedify-debug-apk` artifact from the **Build Android Debug APK**
-GitHub Actions workflow, or build it locally with `cd android && ./gradlew
-:app:assembleDebug`. See [android/README.md](android/README.md) for setup,
+Download the persistently signed `freedify-signed-apk` artifact from the **Build
+Signed Android APK** GitHub Actions workflow, or make an unsigned local debug
+build with `cd android && ./gradlew :app:assembleDebug`. See
+[android/README.md](android/README.md) for installation, release-signing setup,
 security details, and the Android-specific limitations.
 
 ## ✨ Features

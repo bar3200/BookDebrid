@@ -7,8 +7,8 @@ backend is never bound to the LAN.
 
 ## Install and use
 
-1. Download `freedify-debug-apk` from a successful **Build Android Debug APK**
-   GitHub Actions run, unzip the artifact, and install `app-debug.apk`. Android
+1. Download `freedify-signed-apk` from a successful **Build Signed Android APK**
+   GitHub Actions run, unzip the artifact, and install `app-release.apk`. Android
    may ask you to allow installs from the browser or file manager used.
 2. On first run, enter an AllDebrid API key. Create or revoke keys in your
    AllDebrid account; no key is included in the repository or APK.
@@ -35,6 +35,36 @@ The APK is written to `app/build/outputs/apk/debug/app-debug.apk`. The build
 currently packages `arm64-v8a` (physical modern Android devices) and `x86_64`
 (emulators), so the debug APK is intentionally larger than a single-ABI APK.
 
+To build the same signed release produced by CI, set all four
+`FREEDIFY_SIGNING_*` environment variables used in `app/build.gradle.kts`, then
+run `./gradlew :app:assembleRelease`. The output is
+`app/build/outputs/apk/release/app-release.apk`. Release builds deliberately
+fail when any signing value or the keystore file is missing.
+
+## Persistent update signing
+
+The downloadable APK is signed with one persistent project-owned key. Configure
+these GitHub Actions repository secrets:
+
+- `ANDROID_SIGNING_KEYSTORE_BASE64`: the complete keystore encoded as a
+  single-line base64 value
+- `ANDROID_SIGNING_KEY_ALIAS`: the signing-key alias
+- `ANDROID_SIGNING_STORE_PASSWORD`: the keystore password
+- `ANDROID_SIGNING_KEY_PASSWORD`: the signing-key password
+
+For example, encode a keystore locally with `base64 < freedify-release.jks` on
+macOS or `base64 -w 0 freedify-release.jks` on Linux, and paste the result into
+the first secret. Never commit the keystore or any password. Keep an encrypted,
+tested backup of the keystore and credentials: losing this signing identity
+means future APKs cannot update existing installations.
+
+Version `1.0.1` uses `versionCode` 2. Installations made from earlier workflow
+debug artifacts have a different signature and therefore require a one-time
+uninstall before installing this release. That uninstall removes the app's
+stored settings, including the encrypted AllDebrid key. After installing this
+signed APK once, later builds signed by the same persistent key can update it in
+place as long as their `versionCode` increases.
+
 ## Android-specific behavior and limits
 
 - The normal Python backend and static UI are copied into the APK at build time.
@@ -57,6 +87,6 @@ currently packages `arm64-v8a` (physical modern Android devices) and `x86_64`
 - Cleartext networking is disabled except for `127.0.0.1`/`localhost`; external
   AllDebrid and content requests use HTTPS.
 
-This is a debug build and is signed with the standard per-builder Android debug
-key. A distributable release should add a project-owned signing configuration
-without committing its keystore or passwords.
+The downloadable workflow artifact is a release APK. It is signed only from
+GitHub Actions secrets; the private keystore and passwords are not stored in the
+repository or APK source.

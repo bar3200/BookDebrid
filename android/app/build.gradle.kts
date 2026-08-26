@@ -1,5 +1,16 @@
 import org.gradle.api.tasks.Sync
 
+val signingStoreFile = providers.environmentVariable("FREEDIFY_SIGNING_STORE_FILE").orNull
+val signingKeyAlias = providers.environmentVariable("FREEDIFY_SIGNING_KEY_ALIAS").orNull
+val signingStorePassword = providers.environmentVariable("FREEDIFY_SIGNING_STORE_PASSWORD").orNull
+val signingKeyPassword = providers.environmentVariable("FREEDIFY_SIGNING_KEY_PASSWORD").orNull
+val releaseSigningConfigured = listOf(
+    signingStoreFile,
+    signingKeyAlias,
+    signingStorePassword,
+    signingKeyPassword,
+).all { !it.isNullOrBlank() }
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -14,17 +25,31 @@ android {
         applicationId = "com.freedify.android"
         minSdk = 24
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.0.1"
 
         ndk {
             abiFilters += listOf("arm64-v8a", "x86_64")
         }
     }
 
+    signingConfigs {
+        if (releaseSigningConfigured) {
+            create("persistentRelease") {
+                storeFile = file(signingStoreFile!!)
+                keyAlias = signingKeyAlias
+                storePassword = signingStorePassword
+                keyPassword = signingKeyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            if (releaseSigningConfigured) {
+                signingConfig = signingConfigs.getByName("persistentRelease")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
@@ -62,6 +87,21 @@ tasks.named("preBuild").configure {
 
 tasks.matching { it.name.endsWith("PythonSources") }.configureEach {
     dependsOn(syncEmbeddedPython)
+}
+
+val verifyReleaseSigning by tasks.registering {
+    doLast {
+        check(releaseSigningConfigured) {
+            "Release signing is not configured. Set all FREEDIFY_SIGNING_* environment variables."
+        }
+        check(file(signingStoreFile!!).isFile) {
+            "Release signing keystore does not exist: $signingStoreFile"
+        }
+    }
+}
+
+tasks.matching { it.name == "preReleaseBuild" }.configureEach {
+    dependsOn(verifyReleaseSigning)
 }
 
 chaquopy {
