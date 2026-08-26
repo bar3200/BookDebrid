@@ -111,8 +111,13 @@ export function performGaplessSwitch() {
 export function preloadNextTrack() {
     if (state.currentIndex === -1 || state.currentIndex >= state.queue.length - 1) return;
 
+    const currentTrack = state.queue[state.currentIndex];
     const nextTrack = state.queue[state.currentIndex + 1];
     if (!nextTrack || nextTrack.id === audio.preloadedTrackId) return;
+    // Embedded M4B chapters share one continuous media stream. Loading the
+    // same 300+ MB file into the second player wastes bandwidth and can make
+    // WebView switch streams at a chapter boundary.
+    if (Number.isFinite(Number(nextTrack.chapter_start)) && nextTrack.isrc === currentTrack?.isrc) return;
 
     audio.preloadedTrackId = nextTrack.id;
     audio.preloadedReady = false;

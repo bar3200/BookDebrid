@@ -46,14 +46,28 @@ function updateMediaSession(track) {
 }
 
 let lastAndroidPlaybackSync = 0;
+function getMediaChapterPosition() {
+    const player = getActivePlayer();
+    const track = state.queue[state.currentIndex];
+    const start = Number.isFinite(Number(track?.chapter_start)) ? Number(track.chapter_start) : 0;
+    const chapterEnd = track?.chapter_end;
+    const rawEnd = Number(chapterEnd);
+    const end = chapterEnd != null && Number.isFinite(rawEnd) ? rawEnd : player.duration;
+    return {
+        player,
+        start,
+        end,
+        duration: Number.isFinite(end) ? Math.max(0, end - start) : 0,
+        position: Number.isFinite(player.currentTime) ? Math.max(0, player.currentTime - start) : 0,
+    };
+}
+
 function updateAndroidPlayback(force = false) {
     if (!window.FreedifyAndroid?.updatePlaybackState) return;
     const now = Date.now();
     if (!force && now - lastAndroidPlaybackSync < 1000) return;
     lastAndroidPlaybackSync = now;
-    const player = getActivePlayer();
-    const duration = Number.isFinite(player.duration) ? player.duration : 0;
-    const position = Number.isFinite(player.currentTime) ? player.currentTime : 0;
+    const { player, duration, position } = getMediaChapterPosition();
     window.FreedifyAndroid.updatePlaybackState(
         !player.paused && !player.ended,
         position,
@@ -79,27 +93,29 @@ if ('mediaSession' in navigator) {
             emit('playPrevious');
         }],
         ['nexttrack', () => {
-            emit('playNext');
+            emit('playNext', true);
         }],
         ['seekbackward', (details) => {
-            const player = getActivePlayer();
-            player.currentTime = Math.max(player.currentTime - (details.seekOffset || 10), 0);
+            const { player, start } = getMediaChapterPosition();
+            player.currentTime = Math.max(player.currentTime - (details.seekOffset || 10), start);
         }],
         ['seekforward', (details) => {
-            const player = getActivePlayer();
-            player.currentTime = Math.min(player.currentTime + (details.seekOffset || 10), player.duration);
+            const { player, end } = getMediaChapterPosition();
+            player.currentTime = Math.min(player.currentTime + (details.seekOffset || 10), end);
         }],
         ['seekto', (details) => {
-            const player = getActivePlayer();
+            const { player, start, end } = getMediaChapterPosition();
+            const target = Math.min(start + details.seekTime, end);
             if (details.fastSeek && 'fastSeek' in player) {
-                player.fastSeek(details.seekTime);
+                player.fastSeek(target);
             } else {
-                player.currentTime = details.seekTime;
+                player.currentTime = target;
             }
         }],
         ['stop', () => {
-            getActivePlayer().pause();
-            getActivePlayer().currentTime = 0;
+            const { player, start } = getMediaChapterPosition();
+            player.pause();
+            player.currentTime = start;
             state.isPlaying = false;
             emit('updatePlayButton');
             navigator.mediaSession.playbackState = 'none';
@@ -118,12 +134,12 @@ if ('mediaSession' in navigator) {
 function updateMediaSessionPosition() {
     if ('mediaSession' in navigator && 'setPositionState' in navigator.mediaSession) {
         try {
-            const player = getActivePlayer();
-            if (player.duration && !isNaN(player.duration) && player.duration > 0) {
+            const { player, duration, position } = getMediaChapterPosition();
+            if (duration > 0) {
                 navigator.mediaSession.setPositionState({
-                    duration: player.duration,
+                    duration,
                     playbackRate: player.playbackRate,
-                    position: Math.min(player.currentTime, player.duration)
+                    position: Math.min(position, duration)
                 });
             }
         } catch (e) { /* Ignore errors */ }

@@ -59,7 +59,7 @@ the first secret. Never commit the keystore or any password. Keep an encrypted,
 tested backup of the keystore and credentials: losing this signing identity
 means future APKs cannot update existing installations.
 
-Version `1.1.0` uses `versionCode` 3. Installations made from earlier workflow
+Version `1.2.0` uses `versionCode` 4. Installations made from earlier workflow
 debug artifacts have a different signature and therefore require a one-time
 uninstall before installing this release. That uninstall removes the app's
 stored settings, including the encrypted AllDebrid key. After installing this
@@ -94,10 +94,10 @@ place as long as their `versionCode` increases.
 - AllDebrid exposes the torrent's file tree, so multi-file books become one
   chapter per audio file. Freedify keeps nested disc/folder names, orders
   numbered filenames naturally (`2` before `10`), and uses AudiobookBay's title,
-  author, cover, and description for book-level metadata. A single chapterized
-  M4B remains one playable file because its internal chapter atom is not exposed
-  by AllDebrid's file listing; supporting virtual seek-based M4B chapters would
-  require a separate range-based metadata reader.
+  author, cover, and description for book-level metadata. For a single M4B,
+  Freedify unlocks the media URL and uses HTTP byte ranges plus Mutagen to read
+  its embedded MP4 chapter table without downloading the audio payload. Those
+  entries become seek-bounded chapters over one continuous stream.
 - Cleartext networking is disabled except for `127.0.0.1`/`localhost`; external
   AllDebrid and content requests use HTTPS.
 

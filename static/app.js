@@ -394,8 +394,10 @@ window.addEventListener('beforeunload', () => {
             const player = document.getElementById('audio-player');
             const player2 = document.getElementById('audio-player-2');
             const activeP = (player && !player.paused) ? player : (player2 && !player2.paused) ? player2 : player;
-            if (activeP && activeP.currentTime > 5) {
-                saveEpisodePosition(currentTrack.id, activeP.currentTime);
+            const chapterStart = Number.isFinite(Number(currentTrack.chapter_start)) ? Number(currentTrack.chapter_start) : 0;
+            const relativePosition = activeP ? Math.max(0, activeP.currentTime - chapterStart) : 0;
+            if (relativePosition > 5) {
+                saveEpisodePosition(currentTrack.id, relativePosition);
             }
         }
     } catch (e) { /* ignore errors during unload */ }

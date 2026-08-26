@@ -66,6 +66,40 @@ export function setPlaybackDeps(deps) {
 
 export function setVisualizerActive(val) { visualizerActive = val; }
 
+function chapterStart(track) {
+    return Number.isFinite(Number(track?.chapter_start)) ? Number(track.chapter_start) : 0;
+}
+
+function chapterEnd(track, player = getActivePlayer()) {
+    const rawEnd = track?.chapter_end;
+    const end = Number(rawEnd);
+    return rawEnd != null && Number.isFinite(end) ? end : player.duration;
+}
+
+function relativeTrackPosition(track, player = getActivePlayer()) {
+    return Math.max(0, player.currentTime - chapterStart(track));
+}
+
+function switchToVirtualChapter(nextIndex, seekToStart) {
+    const previousTrack = state.queue[state.currentIndex];
+    const nextTrack = state.queue[nextIndex];
+    if (!previousTrack || !nextTrack || previousTrack.isrc !== nextTrack.isrc ||
+        !Number.isFinite(Number(nextTrack.chapter_start))) return false;
+
+    markEpisodePlayed(previousTrack.id);
+    clearEpisodePosition(previousTrack.id);
+    state.currentIndex = nextIndex;
+    state.scrobbledCurrent = false;
+    state.lastSavedPositionTime = 0;
+    if (seekToStart) getActivePlayer().currentTime = chapterStart(nextTrack);
+    updatePlayerUI();
+    updateQueueUI();
+    updateFullscreenUI(nextTrack);
+    if (updateMediaSession) updateMediaSession(nextTrack);
+    addToAudiobookHistory(nextTrack);
+    return true;
+}
+
 // ========== PLAYBACK ==========
 export function playTrack(track) {
     if (!track || !track.id) {
@@ -391,12 +425,14 @@ export async function loadTrack(track) {
         }
     }
 
+    const resumeOffset = Number(track._resumeAt) || 0;
+    const desiredStart = chapterStart(track) + resumeOffset;
+
     // Set source
     if (track.is_local && track.src) {
         let baseSrc = track.src;
-        if (track._resumeAt && track._resumeAt > 10) {
-            baseSrc += `#t=${track._resumeAt}`;
-            delete track._resumeAt;
+        if (desiredStart > 0) {
+            baseSrc += `#t=${desiredStart}`;
         }
         player.src = baseSrc;
     } else {
@@ -405,12 +441,12 @@ export async function loadTrack(track) {
         const sourceParam = track.source ? `&source=${track.source}` : '';
         let targetSrc = `/api/stream/${track.isrc || track.id}?q=${encodeURIComponent(track.name + ' ' + track.artists)}${hiresParam}${qualityParam}${sourceParam}`;
 
-        if (track._resumeAt && track._resumeAt > 10) {
-            targetSrc += `#t=${track._resumeAt}`;
-            delete track._resumeAt;
+        if (desiredStart > 0) {
+            targetSrc += `#t=${desiredStart}`;
         }
         player.src = targetSrc;
     }
+    delete track._resumeAt;
 
     try {
         state.lastSavedPositionTime = 0;
@@ -427,7 +463,11 @@ export async function loadTrack(track) {
                 }
             };
 
-            player.onloadedmetadata = () => {};
+            player.onloadedmetadata = () => {
+                if (desiredStart > 0 && Math.abs(player.currentTime - desiredStart) > 0.25) {
+                    player.currentTime = desiredStart;
+                }
+            };
 
             player.oncanplay = () => {
                 cleanup();
@@ -542,8 +582,10 @@ export function playNext(forceAdvance) {
     const currentTrack = state.queue[state.currentIndex];
     const player = getActivePlayer();
 
+    if (forceAdvance && switchToVirtualChapter(state.currentIndex + 1, true)) return;
+
     if (!forceAdvance && currentTrack && (currentTrack.source === 'podcast' || currentTrack.source === 'audiobook')) {
-        const remaining = (player.duration || 0) - player.currentTime;
+        const remaining = chapterEnd(currentTrack, player) - player.currentTime;
         if (remaining > 15) {
             player.currentTime = player.currentTime + 15;
             return;
@@ -600,7 +642,7 @@ export function playPrevious() {
     const player = getActivePlayer();
 
     if (currentTrack && (currentTrack.source === 'podcast' || currentTrack.source === 'audiobook')) {
-        player.currentTime = Math.max(0, player.currentTime - 15);
+        player.currentTime = Math.max(chapterStart(currentTrack), player.currentTime - 15);
         return;
     }
     if (player.currentTime > 3) {
@@ -628,8 +670,9 @@ function handlePause(e) {
 
         // Save podcast/audiobook position on any pause
         if (currentTrack && (currentTrack.source === 'podcast' || currentTrack.source === 'audiobook')) {
-            if (player.currentTime > 5) {
-                saveEpisodePosition(currentTrack.id, player.currentTime);
+            const relativePosition = relativeTrackPosition(currentTrack, player);
+            if (relativePosition > 5) {
+                saveEpisodePosition(currentTrack.id, relativePosition);
             }
         }
 
@@ -674,9 +717,19 @@ function handleTimeUpdate() {
     const player = getActivePlayer();
     if (state.syncEnabled) sendTimeUpdate(player.currentTime);
     if (player.duration) {
-        currentTime.textContent = formatTime(player.currentTime);
-        duration.textContent = formatTime(player.duration);
-        progressBar.value = (player.currentTime / player.duration) * 100;
+        const currentTrack = state.queue[state.currentIndex];
+        const start = chapterStart(currentTrack);
+        const end = chapterEnd(currentTrack, player);
+        const displayPosition = Math.max(0, player.currentTime - start);
+        const displayDuration = Math.max(0, end - start);
+
+        const hasChapterEnd = currentTrack?.chapter_end != null && Number.isFinite(Number(currentTrack.chapter_end));
+        if (hasChapterEnd && player.currentTime >= end - 0.15 &&
+            switchToVirtualChapter(state.currentIndex + 1, false)) return;
+
+        currentTime.textContent = formatTime(displayPosition);
+        duration.textContent = formatTime(displayDuration);
+        progressBar.value = displayDuration > 0 ? (displayPosition / displayDuration) * 100 : 0;
 
         fsCurrentTime.textContent = currentTime.textContent;
         fsDuration.textContent = duration.textContent;
@@ -691,22 +744,21 @@ function handleTimeUpdate() {
             }
         }
 
-        const currentTrack = state.queue[state.currentIndex];
         if (currentTrack && (currentTrack.source === 'podcast' || currentTrack.source === 'audiobook')) {
-            if (player.currentTime > 5 && player.currentTime > state.lastSavedPositionTime + 10) {
-                saveEpisodePosition(currentTrack.id, player.currentTime);
-                state.lastSavedPositionTime = player.currentTime;
+            if (displayPosition > 5 && displayPosition > state.lastSavedPositionTime + 10) {
+                saveEpisodePosition(currentTrack.id, displayPosition);
+                state.lastSavedPositionTime = displayPosition;
             }
         }
 
-        const timeRemaining = player.duration - player.currentTime;
-        if (timeRemaining <= 60 && timeRemaining > 0 && !audio.preloadedTrackId) {
+        const timeRemaining = end - player.currentTime;
+        if (!hasChapterEnd && timeRemaining <= 60 && timeRemaining > 0 && !audio.preloadedTrackId) {
             preloadNextTrack();
         }
 
         const crossfadeTime = audio.crossfadeEnabled ? audio.CROSSFADE_DURATION / 1000 : 0.2;
 
-        if (timeRemaining <= crossfadeTime && timeRemaining > 0 && audio.preloadedPlayer && !audio.crossfadeTimeout && !audio.transitionInProgress) {
+        if (!hasChapterEnd && timeRemaining <= crossfadeTime && timeRemaining > 0 && audio.preloadedPlayer && !audio.crossfadeTimeout && !audio.transitionInProgress) {
             audio.crossfadeTimeout = setTimeout(() => {
                 audio.crossfadeTimeout = null;
             }, crossfadeTime * 1000 + 1000);
@@ -791,17 +843,20 @@ export function handleNativeMediaCommand(command, value = 0) {
             playPrevious();
             break;
         case 'next':
-            playNext();
+            playNext(true);
             break;
         case 'seekTo':
             if (Number.isFinite(player.duration) && player.duration > 0) {
-                player.currentTime = Math.max(0, Math.min(Number(value) / 1000, player.duration));
+                const track = state.queue[state.currentIndex];
+                const start = chapterStart(track);
+                const end = chapterEnd(track, player);
+                player.currentTime = Math.max(start, Math.min(start + Number(value) / 1000, end));
             }
             break;
         case 'stop':
             state.isPlaying = false;
             player.pause();
-            player.currentTime = 0;
+            player.currentTime = chapterStart(state.queue[state.currentIndex]);
             updatePlayButton();
             break;
     }
@@ -871,7 +926,10 @@ shuffleQueueBtn.addEventListener('click', () => {
 progressBar.addEventListener('input', (e) => {
     const player = getActivePlayer();
     if (player.duration && Number.isFinite(player.duration)) {
-        player.currentTime = (e.target.value / 100) * player.duration;
+        const track = state.queue[state.currentIndex];
+        const start = chapterStart(track);
+        const end = chapterEnd(track, player);
+        player.currentTime = start + (e.target.value / 100) * (end - start);
         e.target.style.setProperty('--value', e.target.value + '%');
         if (fsProgressBar) fsProgressBar.style.setProperty('--value', e.target.value + '%');
     }
@@ -943,7 +1001,7 @@ if (fsPrevBtn) {
         const currentTrack = state.queue[state.currentIndex];
         const player = getActivePlayer();
         if (currentTrack && (currentTrack.source === 'podcast' || currentTrack.source === 'audiobook')) {
-            player.currentTime = Math.max(0, player.currentTime - 15);
+            player.currentTime = Math.max(chapterStart(currentTrack), player.currentTime - 15);
         } else {
             prevBtn.click();
         }
@@ -954,7 +1012,7 @@ if (fsNextBtn) {
         const currentTrack = state.queue[state.currentIndex];
         const player = getActivePlayer();
         if (currentTrack && (currentTrack.source === 'podcast' || currentTrack.source === 'audiobook')) {
-            const remaining = (player.duration || 0) - player.currentTime;
+            const remaining = chapterEnd(currentTrack, player) - player.currentTime;
             if (remaining > 15) {
                 player.currentTime = player.currentTime + 15;
             } else {
@@ -982,7 +1040,10 @@ if (fsProgressBar) {
     fsProgressBar.addEventListener('input', (e) => {
         const player = getActivePlayer();
         if (player.duration) {
-            player.currentTime = (e.target.value / 100) * player.duration;
+            const track = state.queue[state.currentIndex];
+            const start = chapterStart(track);
+            const end = chapterEnd(track, player);
+            player.currentTime = start + (e.target.value / 100) * (end - start);
         }
     });
 }

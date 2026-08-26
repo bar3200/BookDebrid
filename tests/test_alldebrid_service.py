@@ -163,6 +163,25 @@ class AllDebridServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["audio_files"][0]["source_link"], "https://alldebrid.com/f/one")
         self.assertEqual(result["audio_files"][0]["link"], "https://alldebrid.com/f/one")
 
+    @patch("app.m4b_chapter_service.extract_m4b_chapters")
+    @patch("app.alldebrid_service.unlock_link", new_callable=AsyncMock)
+    @patch("app.alldebrid_service._make_request", new_callable=AsyncMock)
+    async def test_single_m4b_includes_embedded_chapters(self, request, unlock, extract):
+        request.return_value = {
+            "magnets": [{"files": [{"n": "Book.m4b", "s": 10, "l": "https://alldebrid.com/f/book"}]}]
+        }
+        unlock.return_value = "https://cdn.example/book.m4b"
+        extract.return_value = {
+            "duration": 30.0,
+            "chapters": [{"title": "Chapter One", "start": 0.0, "end": 30.0, "duration": 30.0}],
+        }
+
+        result = await alldebrid_service.list_folder_contents("42")
+
+        self.assertEqual(result["audio_files"][0]["chapters"], extract.return_value["chapters"])
+        unlock.assert_awaited_once_with("https://alldebrid.com/f/book")
+        extract.assert_called_once_with("https://cdn.example/book.m4b")
+
     @patch("app.alldebrid_service.unlock_link", new_callable=AsyncMock)
     async def test_refresh_generates_a_new_playable_link(self, unlock):
         unlock.return_value = "https://cdn.example/fresh"

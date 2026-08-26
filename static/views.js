@@ -538,6 +538,20 @@ window.renderMyBooksView = renderMyBooksView;
 
 // ========== BOOK INFO MODAL ==========
 function openBookInfoModal(book) {
+    // Refresh one-track AllDebrid books cached by pre-1.2 builds once so an
+    // existing installation discovers embedded M4B chapters automatically.
+    if (book.debrid_provider === 'alldebrid' && book.debrid_id &&
+        book.cachedTracks?.length === 1 && !book.chapter_metadata_checked_at) {
+        loadAudiobookFolder(book.debrid_id, {
+            id: book.id,
+            title: book.name,
+            author: book.artist,
+            cover_image: book.artwork,
+            description: book.description,
+        }, 'alldebrid');
+        return;
+    }
+
     const modal = document.getElementById('book-info-modal');
     const overlay = modal.querySelector('.book-info-overlay');
     const closeBtn = document.getElementById('book-info-close');
@@ -2035,6 +2049,22 @@ function makeDebridTrackIsrc(file, provider) {
     return `${prefix}${btoa(value).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')}`;
 }
 
+function expandEmbeddedM4bChapters(audioFiles) {
+    return audioFiles.flatMap(file => {
+        if (!Array.isArray(file.chapters) || file.chapters.length === 0) return [file];
+        return file.chapters.map((chapter, index) => ({
+            ...file,
+            name: chapter.title || `Chapter ${index + 1}`,
+            path: `${file.path || file.name}#chapter-${index + 1}`,
+            chapter_start: Number(chapter.start) || 0,
+            chapter_end: chapter.end != null && Number.isFinite(Number(chapter.end)) ? Number(chapter.end) : null,
+            chapter_duration: chapter.duration != null && Number.isFinite(Number(chapter.duration)) ? Number(chapter.duration) : null,
+            embedded_chapter: true,
+            chapters: undefined,
+        }));
+    });
+}
+
 function initAudiobooks() {
     loadAudiobookDebridConfig().catch(e => console.error('Debrid config error', e));
     const providerSelect = $('#audiobook-provider-select');
@@ -2194,6 +2224,7 @@ async function searchDebridForAudiobook(title, provider = getAudiobookProvider()
 }
 
 function processDirectAudioFiles(audioFiles, details, provider = getAudiobookProvider(), itemId = null) {
+    audioFiles = expandEmbeddedM4bChapters(audioFiles);
     audioFiles.sort((a, b) => (a.path || a.name).localeCompare(
         b.path || b.name,
         undefined,
@@ -2203,8 +2234,10 @@ function processDirectAudioFiles(audioFiles, details, provider = getAudiobookPro
 
     const mappedTracks = audioFiles.map((file, index) => {
         const chapterSource = file.path || file.name;
-        const chapterParts = chapterSource.replace(/\.[^/.]+$/, '').split('/').filter(Boolean);
-        const chapterName = chapterParts.slice(-2).join(' · ');
+        const chapterParts = chapterSource.replace(/#chapter-\d+$/, '').replace(/\.[^/.]+$/, '').split('/').filter(Boolean);
+        const chapterName = file.embedded_chapter
+            ? file.name
+            : chapterParts.slice(-2).join(' · ');
         const stableId = `ab_${details.title}_${chapterSource}`.replace(/[^a-zA-Z0-9_]/g, '_');
 
         return {
@@ -2214,9 +2247,11 @@ function processDirectAudioFiles(audioFiles, details, provider = getAudiobookPro
             artists: details.author || 'Unknown Author',
             album: details.title,
             album_art: details.cover_image || '/static/icon.svg',
-            duration: '0:00',
+            duration: file.chapter_duration ?? '0:00',
             source: 'audiobook',
             track_number: index + 1,
+            chapter_start: file.embedded_chapter ? file.chapter_start : undefined,
+            chapter_end: file.embedded_chapter ? (file.chapter_end ?? undefined) : undefined,
             debrid_provider: provider,
             debrid_id: itemId
         };
@@ -2240,6 +2275,9 @@ function processDirectAudioFiles(audioFiles, details, provider = getAudiobookPro
         state.audiobookFavorites[favIdx].cachedAt = Date.now();
         state.audiobookFavorites[favIdx].debrid_provider = provider;
         state.audiobookFavorites[favIdx].debrid_id = itemId;
+        if (provider === 'alldebrid') {
+            state.audiobookFavorites[favIdx].chapter_metadata_checked_at = Date.now();
+        }
         if (details.description) {
             state.audiobookFavorites[favIdx].description = details.description;
         }
@@ -2434,54 +2472,7 @@ async function loadAudiobookFolder(folderId, audiobookDetails, provider = getAud
             return;
         }
 
-        // Close modal and map tracks for showDetailView
-        audiobookModal.classList.add('hidden');
-
-        const mappedTracks = audioFiles.map((file, index) => {
-            // Use stream_link if available, fallback to directlink for actual media access
-            // Use a STABLE ID based on filename + audiobook title (stream URLs expire and change)
-            const stableId = `ab_${audiobookDetails.title}_${file.name}`.replace(/[^a-zA-Z0-9_]/g, '_');
-            return {
-                id: stableId,
-                isrc: makeDebridTrackIsrc(file, provider),
-                name: file.name.replace(/\.[^/.]+$/, ""), // Remove extension
-                artists: audiobookDetails.title,
-                album: audiobookDetails.title,
-                album_art: audiobookDetails.cover_image || '/static/icon.svg',
-                duration: '0:00', // We don't have duration upfront
-                source: 'audiobook', // Mark as audiobook so it uses the podcast resume logic!
-                track_number: index + 1,
-                debrid_provider: provider,
-                debrid_id: folderId
-            };
-        });
-
-        const albumData = {
-            id: `ab_${folderId}`,
-            name: audiobookDetails.title,
-            artists: 'Audiobook',
-            image: audiobookDetails.cover_image || '/static/icon.svg',
-            is_playlist: false
-        };
-
-        showDetailView(albumData, mappedTracks);
-
-        // Auto-save and cache tracks so later plays don't need another cloud request.
-        addAudiobookFavorite(audiobookDetails);
-        const favIdx = state.audiobookFavorites.findIndex(b =>
-            b.name === audiobookDetails.title || b.id === audiobookDetails.id
-        );
-        if (favIdx !== -1) {
-            state.audiobookFavorites[favIdx].cachedTracks = mappedTracks;
-            state.audiobookFavorites[favIdx].cachedAt = Date.now();
-            state.audiobookFavorites[favIdx].debrid_provider = provider;
-            state.audiobookFavorites[favIdx].debrid_id = folderId;
-            // Cache the description from AudiobookBay for the book info modal
-            if (audiobookDetails.description) {
-                state.audiobookFavorites[favIdx].description = audiobookDetails.description;
-            }
-            saveAudiobookFavorites();
-        }
+        processDirectAudioFiles(audioFiles, audiobookDetails, provider, folderId);
 
     } catch (e) {
         hideLoading();

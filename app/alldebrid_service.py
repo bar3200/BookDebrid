@@ -1,5 +1,6 @@
 """AllDebrid API adapter for audiobook magnet caching and playback."""
 
+import asyncio
 import base64
 import binascii
 import logging
@@ -187,6 +188,22 @@ async def list_folder_contents(magnet_id: str):
             item["type"] = "file"
             audio_files.append(item)
     audio_files.sort(key=lambda item: _natural_path_key(item["path"]))
+
+    # AllDebrid's file API cannot see chapters embedded inside a single M4B.
+    # Unlock that file and let Mutagen inspect its small MP4 metadata ranges.
+    # Any metadata failure is non-fatal: the M4B remains playable as one track.
+    if len(audio_files) == 1 and audio_files[0]["name"].lower().endswith(".m4b"):
+        try:
+            from app.m4b_chapter_service import extract_m4b_chapters
+
+            playable_link = await unlock_link(audio_files[0]["source_link"])
+            chapter_data = await asyncio.to_thread(extract_m4b_chapters, playable_link)
+            if chapter_data["chapters"]:
+                audio_files[0]["chapters"] = chapter_data["chapters"]
+                audio_files[0]["duration"] = chapter_data["duration"]
+        except Exception as exc:
+            logger.warning("Could not read embedded M4B chapters: %s", exc)
+
     return {
         "status": "success",
         "audio_files": audio_files,
