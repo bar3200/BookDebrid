@@ -1,8 +1,10 @@
 """AllDebrid API adapter for audiobook magnet caching and playback."""
 
+import base64
+import binascii
 import logging
 import os
-from urllib.parse import unquote
+from urllib.parse import unquote, urlparse
 
 import httpx
 from fastapi import HTTPException
@@ -207,6 +209,49 @@ async def search_my_files(query: str):
 async def refresh_link_by_source(source_link: str) -> str:
     """Refresh an expired playable link from its stable AllDebrid file link."""
     return await unlock_link(unquote(source_link))
+
+
+def decode_source_link(encoded_link: str) -> str:
+    """Decode and validate an ``ALLDEBRID:`` track payload."""
+    try:
+        padded_link = encoded_link + "=" * ((4 - len(encoded_link) % 4) % 4)
+        source_link = base64.b64decode(
+            padded_link, altchars=b"-_", validate=True
+        ).decode("utf-8")
+    except (binascii.Error, UnicodeDecodeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=400, detail="Invalid AllDebrid stream identifier"
+        ) from exc
+
+    parsed = urlparse(source_link)
+    if parsed.scheme != "https" or parsed.hostname not in {
+        "alldebrid.com",
+        "www.alldebrid.com",
+    }:
+        raise HTTPException(
+            status_code=400, detail="Invalid AllDebrid stream identifier"
+        )
+    return source_link
+
+
+async def resolve_playable_link(encoded_link: str) -> str:
+    """Resolve an encoded stable link or fail without entering other resolvers."""
+    source_link = decode_source_link(encoded_link)
+    try:
+        playable_link = await refresh_link_by_source(source_link)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("Unexpected AllDebrid link refresh failure: %s", exc)
+        raise HTTPException(
+            status_code=502, detail="Failed to refresh AllDebrid stream link"
+        ) from exc
+
+    if not playable_link:
+        raise HTTPException(
+            status_code=502, detail="AllDebrid did not return a playable stream link"
+        )
+    return playable_link
 
 
 async def refresh_link_by_filename(filename: str) -> str | None:

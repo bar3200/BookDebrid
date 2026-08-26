@@ -846,14 +846,10 @@ async def stream_audio(
         # AllDebrid file links are stable, while their unlocked CDN links expire.
         # Resolve the stable link for every playback to always get a fresh URL.
         if isrc.startswith("ALLDEBRID:"):
-            import base64
-            try:
-                encoded_link = isrc.replace("ALLDEBRID:", "", 1)
-                encoded_link += "=" * ((4 - len(encoded_link) % 4) % 4)
-                source_link = base64.urlsafe_b64decode(encoded_link).decode()
-                target_stream_url = await alldebrid_service.refresh_link_by_source(source_link)
-            except Exception as e:
-                logger.warning(f"Failed to unlock AllDebrid link: {e}")
+            encoded_link = isrc.replace("ALLDEBRID:", "", 1)
+            target_stream_url = await alldebrid_service.resolve_playable_link(
+                encoded_link
+            )
 
         # Handle Imported Links (LINK:)
         elif isrc.startswith("LINK:"):

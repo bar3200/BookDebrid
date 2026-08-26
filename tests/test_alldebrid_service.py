@@ -119,6 +119,55 @@ class AllDebridServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result, "https://cdn.example/fresh")
         unlock.assert_awaited_once_with("https://alldebrid.com/f/one")
 
+    @patch("app.alldebrid_service.refresh_link_by_source", new_callable=AsyncMock)
+    async def test_resolver_rejects_malformed_identifier_without_refresh(self, refresh):
+        with self.assertRaises(alldebrid_service.HTTPException) as raised:
+            await alldebrid_service.resolve_playable_link("not-valid-base64!")
+
+        self.assertEqual(raised.exception.status_code, 400)
+        self.assertEqual(raised.exception.detail, "Invalid AllDebrid stream identifier")
+        refresh.assert_not_awaited()
+
+    @patch("app.alldebrid_service.refresh_link_by_source", new_callable=AsyncMock)
+    async def test_resolver_propagates_clean_refresh_http_error(self, refresh):
+        encoded = "aHR0cHM6Ly9hbGxkZWJyaWQuY29tL2Yvb25l"
+        refresh.side_effect = alldebrid_service.HTTPException(
+            status_code=502, detail="Request to AllDebrid failed"
+        )
+
+        with self.assertRaises(alldebrid_service.HTTPException) as raised:
+            await alldebrid_service.resolve_playable_link(encoded)
+
+        self.assertEqual(raised.exception.status_code, 502)
+        self.assertEqual(raised.exception.detail, "Request to AllDebrid failed")
+
+    @patch("app.alldebrid_service.refresh_link_by_source", new_callable=AsyncMock)
+    async def test_resolver_wraps_unexpected_refresh_failure(self, refresh):
+        encoded = "aHR0cHM6Ly9hbGxkZWJyaWQuY29tL2Yvb25l"
+        refresh.side_effect = RuntimeError("boom")
+
+        with self.assertRaises(alldebrid_service.HTTPException) as raised:
+            await alldebrid_service.resolve_playable_link(encoded)
+
+        self.assertEqual(raised.exception.status_code, 502)
+        self.assertEqual(
+            raised.exception.detail, "Failed to refresh AllDebrid stream link"
+        )
+
+    @patch("app.alldebrid_service.refresh_link_by_source", new_callable=AsyncMock)
+    async def test_resolver_rejects_empty_refresh_result(self, refresh):
+        encoded = "aHR0cHM6Ly9hbGxkZWJyaWQuY29tL2Yvb25l"
+        refresh.return_value = None
+
+        with self.assertRaises(alldebrid_service.HTTPException) as raised:
+            await alldebrid_service.resolve_playable_link(encoded)
+
+        self.assertEqual(raised.exception.status_code, 502)
+        self.assertEqual(
+            raised.exception.detail,
+            "AllDebrid did not return a playable stream link",
+        )
+
     @patch("app.alldebrid_service._make_request", new_callable=AsyncMock)
     async def test_search_matches_ready_magnets(self, request):
         request.return_value = {
