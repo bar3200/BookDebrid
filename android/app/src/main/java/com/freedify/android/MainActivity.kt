@@ -20,6 +20,7 @@ import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.WebSettings
 import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
@@ -168,6 +169,7 @@ class MainActivity : AppCompatActivity() {
             mediaPlaybackRequiresUserGesture = false
             allowFileAccess = false
             allowContentAccess = false
+            cacheMode = WebSettings.LOAD_NO_CACHE
             userAgentString = "$userAgentString FreedifyAndroid/1.0"
         }
         CookieManager.getInstance().setAcceptCookie(true)

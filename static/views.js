@@ -1998,6 +1998,7 @@ const audiobookModal = $('#audiobook-modal');
 const audiobookCloseBtn = $('#audiobook-modal-close');
 let currentAudiobookDetails = null;
 let audiobookPollInterval = null;
+let audiobookPollFailures = 0;
 let audiobookDebridConfig = null;
 
 async function loadAudiobookDebridConfig() {
@@ -2052,11 +2053,12 @@ function initAudiobooks() {
         audiobookCloseBtn.addEventListener('click', () => {
             audiobookModal.classList.add('hidden');
             if (audiobookPollInterval) {
-                clearInterval(audiobookPollInterval);
+                clearTimeout(audiobookPollInterval);
                 audiobookPollInterval = null;
             }
         });
     }
+
 }
 
 async function openAudiobook(id) {
@@ -2243,54 +2245,85 @@ function processDirectAudioFiles(audioFiles, details, provider = getAudiobookPro
 async function startAudiobookDownload(magnetLink) {
     const btn = $('#audiobook-download-btn');
     const provider = getAudiobookProvider();
+    const providerLabel = getAudiobookProviderLabel(provider);
+    if (!magnetLink) {
+        showError('This audiobook did not include a valid magnet link.');
+        return;
+    }
+
     btn.disabled = true;
     btn.textContent = 'Starting Transfer...';
     $('#audiobook-progress-container').classList.remove('hidden');
+    $('#audiobook-progress-status').textContent = `Sending magnet to ${providerLabel}...`;
+    $('#audiobook-progress-percent').textContent = '0%';
+    $('#audiobook-progress-fill').style.width = '0%';
+
+    const controller = new AbortController();
+    const requestTimeout = setTimeout(() => controller.abort(), 40000);
 
     try {
         const response = await fetch(`/api/debrid/${provider}/transfer`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ magnet_link: magnetLink })
+            body: JSON.stringify({ magnet_link: magnetLink }),
+            signal: controller.signal
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.detail || 'Failed to start transfer');
 
         if (data.status === 'success') {
-            pollAudiobookTransfer(data.id || data.transfer_id, provider); // The id depends on the exact API response
+            const transferId = data.id || data.transfer_id;
+            if (!transferId) throw new Error(`${providerLabel} did not return a transfer ID`);
+
+            if (data.ready) {
+                btn.textContent = 'Loading chapters...';
+                $('#audiobook-progress-status').textContent = 'Already cached — loading chapters...';
+                $('#audiobook-progress-percent').textContent = '100%';
+                $('#audiobook-progress-fill').style.width = '100%';
+                await loadAudiobookFolder(transferId, currentAudiobookDetails, provider);
+            } else {
+                btn.textContent = `Downloading with ${providerLabel}...`;
+                $('#audiobook-progress-status').textContent = 'Transfer started — checking progress...';
+                pollAudiobookTransfer(transferId, provider);
+            }
         } else {
             throw new Error(data.detail || data.message || 'Failed to start transfer');
         }
     } catch (e) {
         btn.disabled = false;
-        btn.textContent = `☁️ Download to ${getAudiobookProviderLabel(provider)}`;
-        showError(e.message);
+        btn.textContent = `☁️ Download to ${providerLabel}`;
+        $('#audiobook-progress-status').textContent = 'Transfer could not be started';
+        showError(e.name === 'AbortError' ? `${providerLabel} did not respond in time. Please try again.` : e.message);
+    } finally {
+        clearTimeout(requestTimeout);
     }
 }
 
 async function pollAudiobookTransfer(transferId, provider = getAudiobookProvider()) {
-    if (audiobookPollInterval) clearInterval(audiobookPollInterval);
+    if (audiobookPollInterval) clearTimeout(audiobookPollInterval);
+    audiobookPollFailures = 0;
+    const providerLabel = getAudiobookProviderLabel(provider);
+    $('#audiobook-download-btn').disabled = true;
+    $('#audiobook-download-btn').textContent = `Downloading with ${providerLabel}...`;
 
-    // Fallback if transferId is missing from create transfer response
     const fetchStatus = async () => {
+        audiobookPollInterval = null;
         try {
-            const res = await fetch(`/api/debrid/${provider}/transfer/${transferId || ''}`);
+            const res = await fetch(`/api/debrid/${provider}/transfer/${encodeURIComponent(transferId)}`);
             const data = await res.json();
             if (!res.ok) throw new Error(data.detail || 'Transfer status request failed');
+            audiobookPollFailures = 0;
 
             let transfer = null;
-            if (transferId && data.transfer && !Array.isArray(data.transfer)) {
+            if (data.transfer && !Array.isArray(data.transfer)) {
                 transfer = data.transfer;
             } else if (data.transfer && Array.isArray(data.transfer)) {
-                // Find highest progress if we don't know the ID
-                transfer = data.transfer.filter(t => t.name && (t.name.includes(currentAudiobookDetails.title.split(' ')[0]) || t.message !== 'finished')).pop();
+                transfer = data.transfer.find(t => String(t.id) === String(transferId));
             }
 
             if (!transfer) {
                 // If transfer disappeared, it might be finished
-                clearInterval(audiobookPollInterval);
-                audiobookPollInterval = null;
-                // Now try to find the folder it created
+                $('#audiobook-progress-status').textContent = 'Transfer no longer active — locating chapters...';
                 autoFindFinishedFolder(provider, transferId);
                 return;
             }
@@ -2303,17 +2336,13 @@ async function pollAudiobookTransfer(transferId, provider = getAudiobookProvider
             $('#audiobook-progress-status').textContent = statusStr;
 
             if (transfer.status === 'error') {
-                clearInterval(audiobookPollInterval);
-                audiobookPollInterval = null;
                 $('#audiobook-download-btn').disabled = false;
-                $('#audiobook-download-btn').textContent = `☁️ Download to ${getAudiobookProviderLabel(provider)}`;
+                $('#audiobook-download-btn').textContent = `☁️ Download to ${providerLabel}`;
                 showError(statusStr);
                 return;
             }
 
             if (transfer.status === 'finished' || progress >= 100) {
-                clearInterval(audiobookPollInterval);
-                audiobookPollInterval = null;
                 $('#audiobook-progress-status').textContent = 'Complete! Loading tracks...';
                 $('#audiobook-download-btn').textContent = '▶ Play';
 
@@ -2323,14 +2352,29 @@ async function pollAudiobookTransfer(transferId, provider = getAudiobookProvider
                 } else {
                     autoFindFinishedFolder(provider, transferId);
                 }
+                return;
             }
 
         } catch (e) {
             console.error('Polling error', e);
+            audiobookPollFailures += 1;
+            if (audiobookPollFailures >= 3) {
+                $('#audiobook-progress-status').textContent = `Could not check ${providerLabel} progress`;
+                $('#audiobook-progress-percent').textContent = '';
+                $('#audiobook-download-btn').disabled = false;
+                $('#audiobook-download-btn').textContent = 'Retry progress check';
+                $('#audiobook-download-btn').onclick = () => pollAudiobookTransfer(transferId, provider);
+                showError(e.message || 'Transfer status request failed');
+                return;
+            }
+            $('#audiobook-progress-status').textContent = `Connection interrupted — retrying (${audiobookPollFailures}/3)...`;
+        }
+
+        if (!audiobookModal.classList.contains('hidden')) {
+            audiobookPollInterval = setTimeout(fetchStatus, 3000);
         }
     };
 
-    audiobookPollInterval = setInterval(fetchStatus, 3000);
     fetchStatus(); // immediate run
 }
 
@@ -2376,6 +2420,9 @@ async function loadAudiobookFolder(folderId, audiobookDetails, provider = getAud
         }
 
         if (audioFiles.length === 0) {
+            const btn = $('#audiobook-download-btn');
+            btn.disabled = false;
+            btn.textContent = `☁️ Download to ${getAudiobookProviderLabel(provider)}`;
             showError('No audio files found in the downloaded folder.');
             return;
         }
@@ -2432,7 +2479,10 @@ async function loadAudiobookFolder(folderId, audiobookDetails, provider = getAud
     } catch (e) {
         hideLoading();
         console.error(e);
-        showError('Failed to load audiobook folder');
+        const btn = $('#audiobook-download-btn');
+        btn.disabled = false;
+        btn.textContent = `☁️ Download to ${getAudiobookProviderLabel(provider)}`;
+        showError(e.message || 'Failed to load audiobook folder');
     }
 }
 

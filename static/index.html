@@ -6,6 +6,17 @@
     <meta name="theme-color" content="#1a1a2e">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <script>
+        if (navigator.userAgent.includes('FreedifyAndroid') || new URLSearchParams(location.search).has('androidPreview')) {
+            document.documentElement.classList.add('android-app');
+            window.addEventListener('DOMContentLoaded', () => setTimeout(() => {
+                const audiobookTab = document.querySelector('.type-btn[data-type="audiobook"]');
+                if (audiobookTab && !audiobookTab.classList.contains('active')) audiobookTab.click();
+                const search = document.getElementById('search-input');
+                if (search) search.placeholder = 'Search audiobooks or paste an AudiobookBay link';
+            }, 0));
+        }
+    </script>
     <title>Freedify</title>
     <link rel="manifest" href="/manifest.json">
     <link rel="icon" href="/static/icon.png" type="image/png">
@@ -13,7 +24,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Orbitron:wght@400;700;900&family=Permanent+Marker&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/styles.css?t=1775260000">
+    <link rel="stylesheet" href="/static/styles.css?t=1787760000">
     <!-- Google API for Drive sync -->
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="https://apis.google.com/js/api.js" async defer></script>
@@ -1095,6 +1106,6 @@
     <script src="static/jsmediatags.min.js"></script>
     <script src="https://apis.google.com/js/api.js"></script>
     <script src="https://accounts.google.com/gsi/client"></script>
-    <script type="module" src="/static/app.js?t=1775260000"></script>
+    <script type="module" src="/static/app.js?t=1787760001"></script>
 </body>
 </html>

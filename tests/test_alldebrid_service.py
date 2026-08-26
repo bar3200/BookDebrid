@@ -94,6 +94,15 @@ class AllDebridServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(ready["status"], "finished")
         self.assertEqual(ready["folder_id"], "123")
 
+    def test_normalise_transfer_accepts_string_status_code(self):
+        ready = alldebrid_service._normalise_transfer(
+            {"id": 456, "filename": "Book", "statusCode": "4", "status": "Ready"}
+        )
+
+        self.assertEqual(ready["status"], "finished")
+        self.assertEqual(ready["progress"], 1.0)
+        self.assertEqual(ready["folder_id"], "456")
+
     @patch("app.alldebrid_service._make_request", new_callable=AsyncMock)
     async def test_create_transfer_returns_common_shape(self, request):
         request.return_value = {
@@ -107,6 +116,23 @@ class AllDebridServiceTests(unittest.IsolatedAsyncioTestCase):
             "/v4/magnet/upload",
             method="POST",
             data={"magnets[]": "magnet:?xt=urn:btih:test"},
+        )
+
+    @patch("app.alldebrid_service._make_request", new_callable=AsyncMock)
+    async def test_transfer_status_filters_by_id_and_normalises_ready(self, request):
+        request.return_value = {
+            "magnets": [
+                {"id": 42, "filename": "Book", "statusCode": "4", "status": "Ready"}
+            ]
+        }
+
+        result = await alldebrid_service.check_transfer_status("42")
+
+        self.assertEqual(result["id"], "42")
+        self.assertEqual(result["status"], "finished")
+        self.assertEqual(result["folder_id"], "42")
+        request.assert_awaited_once_with(
+            "/v4.1/magnet/status", method="POST", data={"id": "42"}
         )
 
     @patch("app.alldebrid_service._make_request", new_callable=AsyncMock)

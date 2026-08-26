@@ -68,6 +68,11 @@ allTypeBtns.forEach(btn => {
         }
 
         state.searchType = btn.dataset.type;
+        searchInput.placeholder = state.searchType === 'audiobook'
+            ? 'Search audiobooks or paste an AudiobookBay link'
+            : state.searchType === 'podcast'
+                ? 'Search podcasts'
+                : 'Search music or paste a link';
 
         // Special types
         if (state.searchType === 'favorites') {

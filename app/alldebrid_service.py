@@ -98,16 +98,21 @@ async def create_transfer(magnet_link: str):
 def _normalise_transfer(magnet: dict) -> dict:
     size = magnet.get("size") or 0
     downloaded = magnet.get("downloaded") or 0
-    status_code = magnet.get("statusCode")
-    progress = 1.0 if status_code == 4 else (downloaded / size if size else 0.0)
+    try:
+        status_code = int(magnet.get("statusCode"))
+    except (TypeError, ValueError):
+        status_code = None
+    status_text = str(magnet.get("status") or "").strip()
+    is_ready = bool(magnet.get("ready")) or status_code == 4 or status_text.lower() == "ready"
+    progress = 1.0 if is_ready else (downloaded / size if size else 0.0)
     return {
         **magnet,
         "id": str(magnet.get("id")),
         "name": magnet.get("filename") or magnet.get("name"),
-        "message": magnet.get("status", "Downloading"),
-        "status": "finished" if status_code == 4 else ("error" if status_code and status_code >= 5 else "running"),
+        "message": status_text or "Downloading",
+        "status": "finished" if is_ready else ("error" if status_code and status_code >= 5 else "running"),
         "progress": max(0.0, min(progress, 1.0)),
-        "folder_id": str(magnet.get("id")) if status_code == 4 else None,
+        "folder_id": str(magnet.get("id")) if is_ready else None,
     }
 
 

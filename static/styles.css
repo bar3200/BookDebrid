@@ -41,6 +41,423 @@
     --player-height: 180px;
 }
 
+/* ==================== Embedded Android App Shell ==================== */
+/* Scoped to the WebView user agent so desktop and hosted installs retain their
+   existing layout. Higher-specificity selectors keep these overrides isolated. */
+html.android-app {
+    --bg-primary: #090912;
+    --bg-secondary: rgba(20, 20, 32, 0.94);
+    --bg-tertiary: #202034;
+    --bg-elevated: #2a2a42;
+    --radius-sm: 10px;
+    --radius-md: 16px;
+    --radius-lg: 24px;
+}
+
+html.android-app body {
+    background:
+        radial-gradient(circle at 15% -10%, rgba(99, 102, 241, 0.22), transparent 36%),
+        radial-gradient(circle at 100% 20%, rgba(168, 85, 247, 0.12), transparent 30%),
+        var(--bg-primary);
+    overscroll-behavior: none;
+}
+
+.android-app button,
+.android-app input,
+.android-app select {
+    font-family: inherit;
+}
+
+.android-app .header {
+    min-height: 62px;
+    padding: 10px 16px 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: rgba(9, 9, 18, 0.8);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    backdrop-filter: blur(18px) saturate(140%);
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
+    z-index: 20;
+}
+
+.android-app .logo {
+    font-size: 1.35rem;
+    letter-spacing: -0.03em;
+}
+
+.android-app #hifi-btn {
+    display: none;
+}
+
+.android-app .header-btn,
+.android-app .settings-btn {
+    min-width: 44px;
+    min-height: 44px;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.android-app .search-section {
+    padding: 10px 12px 8px;
+    background: linear-gradient(180deg, rgba(9, 9, 18, 0.92), rgba(9, 9, 18, 0.65));
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.android-app .search-input {
+    min-height: 50px;
+    padding: 12px 48px 12px 16px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.07);
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+    font-size: 16px;
+}
+
+.android-app .search-input:focus {
+    border-color: rgba(129, 140, 248, 0.8);
+    background: rgba(255, 255, 255, 0.1);
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.18);
+}
+
+.android-app .search-clear {
+    width: 42px;
+    height: 42px;
+}
+
+.android-app .search-type-selector {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 8px;
+    margin-top: 10px;
+    padding: 2px 1px 5px;
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+}
+
+.android-app .search-type-selector::-webkit-scrollbar {
+    display: none;
+}
+
+.android-app .search-type-selector .type-btn {
+    flex: 0 0 auto;
+    min-height: 40px;
+    padding: 9px 15px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.05);
+    scroll-snap-align: start;
+    white-space: nowrap;
+}
+
+.android-app .search-type-selector .type-btn.active {
+    color: #fff;
+    border-color: transparent;
+    background: linear-gradient(135deg, var(--accent), #8b5cf6);
+    box-shadow: 0 6px 18px var(--accent-glow);
+}
+
+.android-app .results-container {
+    padding: 10px 12px 180px;
+}
+
+.android-app .search-header {
+    padding: 10px 2px 2px;
+}
+
+.android-app .search-header h2 {
+    font-size: 1.45rem;
+    letter-spacing: -0.03em;
+}
+
+.android-app .results-grid,
+.android-app .dashboard-grid-albums {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.android-app .album-card,
+.android-app .dashboard-card {
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 18px;
+    background: linear-gradient(160deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.025));
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+    transform: translateZ(0);
+}
+
+.android-app .album-card:active,
+.android-app .dashboard-card:active {
+    transform: scale(0.98);
+}
+
+.android-app .album-card-art,
+.android-app .dashboard-card > img {
+    aspect-ratio: 1 / 1;
+    object-fit: cover;
+}
+
+.android-app .album-card-info,
+.android-app .dashboard-card-info {
+    padding: 10px 12px 12px;
+}
+
+.android-app .album-card-title,
+.android-app .dashboard-card-title {
+    font-size: 0.92rem;
+    line-height: 1.25;
+}
+
+.android-app .track-item {
+    min-height: 64px;
+    padding: 9px 10px;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 15px;
+    background: rgba(255, 255, 255, 0.035);
+}
+
+.android-app .album-modal,
+.android-app .book-info-modal {
+    padding: 0;
+    align-items: flex-end;
+}
+
+.android-app .album-modal-overlay,
+.android-app .book-info-overlay {
+    background: rgba(3, 3, 8, 0.72);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+}
+
+.android-app .album-modal-content,
+.android-app .book-info-content {
+    width: 100%;
+    max-width: none;
+    max-height: 94dvh;
+    margin: 0;
+    padding-bottom: var(--safe-bottom);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-bottom: none;
+    border-radius: 26px 26px 0 0;
+    background: linear-gradient(165deg, #1b1b2b 0%, #101019 58%);
+    box-shadow: 0 -20px 60px rgba(0, 0, 0, 0.45);
+    animation: androidSheetIn 0.24s ease-out;
+}
+
+.android-app .book-info-content {
+    padding: 22px 18px calc(20px + var(--safe-bottom));
+}
+
+@keyframes androidSheetIn {
+    from { transform: translateY(30px); opacity: 0.65; }
+    to { transform: translateY(0); opacity: 1; }
+}
+
+.android-app .album-modal-header {
+    min-height: 58px;
+    padding: 12px 16px;
+    background: transparent;
+    border-color: rgba(255, 255, 255, 0.07);
+}
+
+.android-app .album-modal-close,
+.android-app .book-info-close {
+    min-width: 44px;
+    min-height: 44px;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.07);
+}
+
+.android-app .album-modal-body {
+    padding: 18px 16px calc(20px + var(--safe-bottom));
+}
+
+.android-app .album-modal-info {
+    gap: 16px;
+}
+
+.android-app .album-modal-art {
+    width: 132px;
+    height: 132px;
+    border-radius: 18px;
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.4);
+}
+
+.android-app .album-modal-title {
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    font-size: 1.25rem;
+    line-height: 1.2;
+}
+
+.android-app #audiobook-provider-container {
+    display: flex !important;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    color: var(--text-secondary);
+    font-size: 0.78rem;
+    text-align: left;
+}
+
+.android-app #audiobook-provider-container.hidden {
+    display: none !important;
+}
+
+.android-app #audiobook-provider-select {
+    width: 100%;
+    min-height: 46px;
+    margin: 0 !important;
+    padding: 0 12px;
+    color: var(--text-primary);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 13px;
+    background: var(--bg-tertiary);
+    font-size: 16px;
+}
+
+.android-app .album-action-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.android-app .album-action-btn,
+.android-app #audiobook-fav-btn,
+.android-app .btn-secondary {
+    min-height: 50px;
+    padding: 12px 16px;
+    border-radius: 15px;
+    font-size: 0.92rem;
+}
+
+.android-app #audiobook-fav-btn,
+.android-app .btn-secondary {
+    color: var(--text-primary);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.07);
+}
+
+.android-app .album-action-btn.primary {
+    border: none;
+    background: linear-gradient(135deg, var(--accent), #8b5cf6);
+    box-shadow: 0 9px 24px var(--accent-glow);
+}
+
+.android-app #audiobook-progress-container {
+    padding: 13px;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.android-app #audiobook-progress-container .progress-bar {
+    height: 10px !important;
+    background: rgba(255, 255, 255, 0.08) !important;
+}
+
+.android-app #audiobook-progress-fill {
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--accent), #a78bfa) !important;
+}
+
+.android-app .album-modal-info-tab {
+    padding: 10px 2px;
+    font-size: 0.94rem;
+    line-height: 1.65;
+}
+
+.android-app .player-bar {
+    padding: 9px 12px calc(9px + var(--safe-bottom));
+    background: rgba(18, 18, 28, 0.9);
+    border-color: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(20px) saturate(150%);
+    -webkit-backdrop-filter: blur(20px) saturate(150%);
+    box-shadow: 0 -12px 36px rgba(0, 0, 0, 0.32);
+}
+
+.android-app .player-main-row {
+    flex-flow: row nowrap;
+    gap: 8px;
+    margin-bottom: 5px;
+}
+
+.android-app .player-info {
+    width: auto;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    gap: 9px;
+}
+
+.android-app .player-art {
+    width: 46px;
+    height: 46px;
+    border-radius: 12px;
+}
+
+.android-app .player-details {
+    max-width: none;
+}
+
+.android-app .player-meta-row .player-album,
+.android-app .player-meta-row .player-year,
+.android-app .player-meta-row .player-separator {
+    display: none;
+}
+
+.android-app .player-controls-primary {
+    width: auto;
+    margin: 0;
+    gap: 2px;
+    justify-content: flex-end;
+}
+
+.android-app .player-controls-primary .control-btn {
+    width: 42px;
+    height: 42px;
+    font-size: 1rem;
+}
+
+.android-app .player-controls-primary #prev-btn,
+.android-app .player-controls-primary #fs-toggle-btn {
+    display: none;
+}
+
+.android-app .player-progress {
+    margin: 0;
+}
+
+.android-app .player-more-menu {
+    right: 10px;
+    bottom: calc(105px + var(--safe-bottom));
+    width: min(330px, calc(100vw - 20px)) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(31, 31, 47, 0.97);
+    backdrop-filter: blur(18px);
+}
+
+.android-app .toast-container {
+    top: 12px;
+    left: 12px;
+    right: 12px;
+    width: auto;
+}
+
+@media (max-width: 380px) {
+    .android-app .album-modal-art {
+        width: 112px;
+        height: 112px;
+    }
+
+    .android-app .player-controls-primary #next-btn {
+        display: none;
+    }
+}
+
 /* ==================== Theme Variants ==================== */
 .theme-purple {
     --accent: #a855f7;
