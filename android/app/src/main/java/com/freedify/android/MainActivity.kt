@@ -33,10 +33,17 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import org.json.JSONObject
+import org.json.JSONTokener
 
 class MainActivity : AppCompatActivity() {
     private lateinit var secureSettings: SecureSettings
     private var webView: WebView? = null
+    private var webViewContainer: FrameLayout? = null
+    private var audiobookSearchWebView: WebView? = null
+    private var audiobookSearchRequestId: String? = null
+    private var audiobookSearchQuery: String = ""
+    private var audiobookSearchPage: Int = 1
+    private var audiobookSearchStage: Int = 0
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
     private var pendingExport: String? = null
 
@@ -273,8 +280,204 @@ class MainActivity : AppCompatActivity() {
             }
         }
         if (BuildConfig.DEBUG) WebView.setWebContentsDebuggingEnabled(true)
-        setContentView(browser)
+        val container = FrameLayout(this)
+        webViewContainer = container
+        container.addView(
+            browser,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+            ),
+        )
+        setContentView(container)
         browser.loadUrl("$FREEDIFY_URL?apkVersion=${BuildConfig.VERSION_CODE}")
+    }
+
+    @SuppressLint("SetJavaScriptEnabled")
+    private fun startAudiobookBaySearch(requestId: String, query: String, page: Int) {
+        destroyAudiobookSearchWebView()
+        audiobookSearchRequestId = requestId
+        audiobookSearchQuery = query
+        audiobookSearchPage = page.coerceAtLeast(1)
+        audiobookSearchStage = 0
+
+        val searchBrowser = WebView(this)
+        audiobookSearchWebView = searchBrowser
+        searchBrowser.alpha = 0f
+        searchBrowser.settings.apply {
+            javaScriptEnabled = true
+            domStorageEnabled = true
+            databaseEnabled = false
+            allowFileAccess = false
+            allowContentAccess = false
+            cacheMode = WebSettings.LOAD_NO_CACHE
+        }
+        CookieManager.getInstance().setAcceptCookie(true)
+        searchBrowser.webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(
+                view: WebView,
+                request: WebResourceRequest,
+            ): Boolean {
+                val host = request.url.host.orEmpty()
+                val isAudiobookBay = host == "audiobookbay.lu" || host.endsWith(".audiobookbay.lu")
+                return !isAudiobookBay
+            }
+
+            override fun onPageFinished(view: WebView, url: String) {
+                if (audiobookSearchRequestId != requestId) return
+                when (audiobookSearchStage) {
+                    0 -> submitAudiobookSearchForm(view, requestId)
+                    1 -> {
+                        if (audiobookSearchPage > 1) {
+                            audiobookSearchStage = 2
+                            val encodedQuery = Uri.encode(audiobookSearchQuery)
+                            view.loadUrl("$AUDIOBOOKBAY_URL/page/$audiobookSearchPage/?s=$encodedQuery")
+                        } else {
+                            extractAudiobookSearchResults(view, requestId)
+                        }
+                    }
+                    2 -> extractAudiobookSearchResults(view, requestId)
+                }
+            }
+
+            override fun onReceivedError(
+                view: WebView,
+                request: WebResourceRequest,
+                error: WebResourceError,
+            ) {
+                if (request.isForMainFrame && audiobookSearchRequestId == requestId) {
+                    finishAudiobookSearchWithError(
+                        requestId,
+                        "AudiobookBay failed to load: ${error.description}",
+                    )
+                }
+            }
+        }
+
+        webViewContainer?.addView(
+            searchBrowser,
+            FrameLayout.LayoutParams(1, 1, Gravity.BOTTOM or Gravity.END),
+        )
+        searchBrowser.postDelayed({
+            if (audiobookSearchRequestId == requestId) {
+                finishAudiobookSearchWithError(requestId, "AudiobookBay search timed out")
+            }
+        }, AUDIOBOOK_SEARCH_TIMEOUT_MS)
+        searchBrowser.loadUrl("$AUDIOBOOKBAY_URL/")
+    }
+
+    private fun submitAudiobookSearchForm(view: WebView, requestId: String) {
+        audiobookSearchStage = 1
+        val quotedQuery = JSONObject.quote(audiobookSearchQuery)
+        view.evaluateJavascript(
+            """
+            (() => {
+                const input = document.querySelector('input[name="s"]');
+                const form = input?.form || input?.closest('form');
+                if (!input || !form) return 'missing';
+                input.value = $quotedQuery;
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+                if (typeof form.requestSubmit === 'function') form.requestSubmit();
+                else form.submit();
+                return 'submitted';
+            })()
+            """.trimIndent(),
+        ) { result ->
+            if (result == JSONObject.quote("missing") && audiobookSearchRequestId == requestId) {
+                finishAudiobookSearchWithError(requestId, "AudiobookBay search form was not found")
+            }
+        }
+    }
+
+    private fun extractAudiobookSearchResults(view: WebView, requestId: String) {
+        view.postDelayed({
+            if (audiobookSearchRequestId != requestId) return@postDelayed
+            view.evaluateJavascript(
+                """
+                (() => {
+                    const results = [...document.querySelectorAll('div.post')].map(post => {
+                        const link = post.querySelector('.postTitle h2 a');
+                        if (!link) return null;
+                        const rawTitle = (link.textContent || '').trim();
+                        let title = rawTitle;
+                        let author = null;
+                        const separator = rawTitle.lastIndexOf(' - ');
+                        if (separator > 0) {
+                            const candidate = rawTitle.slice(separator + 3).trim();
+                            const words = candidate.split(/\s+/).filter(Boolean);
+                            if (words.length >= 1 && words.length <= 8 && candidate.length <= 80 &&
+                                !/(audiobook|\bbooks?\b|series)/i.test(candidate)) {
+                                title = rawTitle.slice(0, separator).trim();
+                                author = candidate;
+                            }
+                        }
+                        let id = link.getAttribute('href') || '';
+                        try { id = new URL(id, location.href).pathname.replace(/^\/+|\/+$/g, ''); } catch (_) {}
+                        const image = post.querySelector('img');
+                        const content = post.querySelector('.postContent');
+                        return {
+                            id,
+                            title,
+                            author,
+                            url: link.href,
+                            cover_image: image?.src || null,
+                            description: (content?.innerText || '').trim().slice(0, 203),
+                            source: 'audiobookbay'
+                        };
+                    }).filter(item => item?.id && item?.title);
+                    return JSON.stringify({
+                        heading: (document.querySelector('h1')?.innerText || '').trim(),
+                        url: location.href,
+                        results
+                    });
+                })()
+                """.trimIndent(),
+            ) { encodedResult ->
+                if (audiobookSearchRequestId != requestId) return@evaluateJavascript
+                try {
+                    val decoded = JSONTokener(encodedResult).nextValue() as? String
+                        ?: throw IllegalStateException("Search page returned no data")
+                    val payload = JSONObject(decoded)
+                    val heading = payload.optString("heading")
+                    val currentUrl = payload.optString("url")
+                    if (!currentUrl.contains("?s=") && heading.isBlank()) {
+                        throw IllegalStateException("AudiobookBay returned its homepage")
+                    }
+                    finishAudiobookSearch(requestId, payload)
+                } catch (error: Exception) {
+                    finishAudiobookSearchWithError(
+                        requestId,
+                        error.message ?: "AudiobookBay search could not be read",
+                    )
+                }
+            }
+        }, AUDIOBOOK_RESULTS_SETTLE_MS)
+    }
+
+    private fun finishAudiobookSearch(requestId: String, payload: JSONObject) {
+        webView?.evaluateJavascript(
+            "window.FreedifyAndroidSearch?.resolve(${JSONObject.quote(requestId)}, ${payload})",
+            null,
+        )
+        destroyAudiobookSearchWebView()
+    }
+
+    private fun finishAudiobookSearchWithError(requestId: String, message: String) {
+        webView?.evaluateJavascript(
+            "window.FreedifyAndroidSearch?.reject(${JSONObject.quote(requestId)}, ${JSONObject.quote(message)})",
+            null,
+        )
+        destroyAudiobookSearchWebView()
+    }
+
+    private fun destroyAudiobookSearchWebView() {
+        audiobookSearchRequestId = null
+        audiobookSearchWebView?.let { searchBrowser ->
+            webViewContainer?.removeView(searchBrowser)
+            searchBrowser.stopLoading()
+            searchBrowser.destroy()
+        }
+        audiobookSearchWebView = null
     }
 
     override fun onBackPressed() {
@@ -292,6 +495,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         PlaybackService.commandHandler = null
+        destroyAudiobookSearchWebView()
         super.onDestroy()
     }
 
@@ -299,6 +503,24 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun openApiKeySettings() {
             runOnUiThread { showSettingsDialog() }
+        }
+
+        @JavascriptInterface
+        fun searchAudiobookBay(requestId: String, query: String, page: Int) {
+            runOnUiThread {
+                if (query.isBlank()) {
+                    finishAudiobookSearchWithError(requestId, "Search term is empty")
+                } else {
+                    startAudiobookBaySearch(requestId, query, page)
+                }
+            }
+        }
+
+        @JavascriptInterface
+        fun cancelAudiobookBaySearch(requestId: String) {
+            runOnUiThread {
+                if (audiobookSearchRequestId == requestId) destroyAudiobookSearchWebView()
+            }
         }
 
         @JavascriptInterface
@@ -363,5 +585,8 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val FREEDIFY_URL = "http://127.0.0.1:8000/"
+        private const val AUDIOBOOKBAY_URL = "https://audiobookbay.lu"
+        private const val AUDIOBOOK_SEARCH_TIMEOUT_MS = 45_000L
+        private const val AUDIOBOOK_RESULTS_SETTLE_MS = 750L
     }
 }

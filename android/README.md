@@ -59,7 +59,7 @@ the first secret. Never commit the keystore or any password. Keep an encrypted,
 tested backup of the keystore and credentials: losing this signing identity
 means future APKs cannot update existing installations.
 
-Version `1.3.5` uses `versionCode` 10. Installations made from earlier workflow
+Version `1.3.6` uses `versionCode` 11. Installations made from earlier workflow
 debug artifacts have a different signature and therefore require a one-time
 uninstall before installing this release. That uninstall removes the app's
 stored settings, including the encrypted AllDebrid key. After installing this
@@ -77,9 +77,11 @@ place as long as their `versionCode` increases.
   interface unresponsive. This cleanup does not clear local settings, saved
   books, history, or resume positions.
 - Selenium/ChromeDriver cannot run inside this packaging model. On Android,
-  AudiobookBay search and detail loading use a direct HTTP/HTML fallback. If the
-  site blocks that fallback, paste a direct AudiobookBay book URL; the error in
-  the UI explains this fallback.
+  AudiobookBay keyword searches run through a small isolated WebView which
+  submits the site's real search form and returns only the rendered result
+  metadata to Freedify. It has no access to the AllDebrid key or Freedify's
+  privileged JavaScript bridge. Direct book URLs and detail pages continue to
+  use the embedded HTTP parser.
 - Desktop-only optional packages (Selenium, webdriver-manager, Supabase,
   Gemini, Zeroconf, and an FFmpeg executable) are not bundled. The embedded app
   is focused on AllDebrid audiobook playback, whose returned audio files stream

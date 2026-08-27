@@ -21,6 +21,19 @@ class AndroidWebBootstrapTests(unittest.TestCase):
         self.assertIn("!document.documentElement.classList.contains('android-app')", app)
         self.assertIn("navigator.serviceWorker.register('/sw.js')", app)
 
+    def test_android_audiobook_search_uses_native_webview_bridge(self):
+        search = (ROOT / "static" / "search.js").read_text(encoding="utf-8")
+        activity = (
+            ROOT
+            / "android/app/src/main/java/com/freedify/android/MainActivity.kt"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("window.FreedifyAndroidSearch", search)
+        self.assertIn("bridge.searchAudiobookBay(requestId, query, page)", search)
+        self.assertIn("fun searchAudiobookBay(requestId: String, query: String, page: Int)", activity)
+        self.assertIn("document.querySelector('input[name=\"s\"]')", activity)
+        self.assertIn("document.querySelectorAll('div.post')", activity)
+
 
 if __name__ == "__main__":
     unittest.main()

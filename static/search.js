@@ -10,6 +10,70 @@ import { isInLibrary, toggleLibrary } from './data.js';
 let searchTimeout = null;
 let activeSearchController = null;
 let searchRequestId = 0;
+let nativeSearchSequence = 0;
+const nativeSearchRequests = new Map();
+
+window.FreedifyAndroidSearch = {
+    resolve(requestId, payload) {
+        const pending = nativeSearchRequests.get(requestId);
+        if (!pending) return;
+        nativeSearchRequests.delete(requestId);
+        pending.cleanup();
+        pending.resolve(payload);
+    },
+    reject(requestId, message) {
+        const pending = nativeSearchRequests.get(requestId);
+        if (!pending) return;
+        nativeSearchRequests.delete(requestId);
+        pending.cleanup();
+        pending.reject(new Error(message || 'AudiobookBay search failed'));
+    },
+};
+
+function searchAudiobookBayWithAndroid(query, page, signal) {
+    const bridge = window.FreedifyAndroid;
+    if (typeof bridge?.searchAudiobookBay !== 'function') return null;
+
+    const requestId = `abb-${Date.now()}-${++nativeSearchSequence}`;
+    return new Promise((resolve, reject) => {
+        const onAbort = () => {
+            nativeSearchRequests.delete(requestId);
+            bridge.cancelAudiobookBaySearch?.(requestId);
+            reject(new DOMException('Search cancelled', 'AbortError'));
+        };
+        const cleanup = () => signal?.removeEventListener('abort', onAbort);
+        nativeSearchRequests.set(requestId, { resolve, reject, cleanup });
+        signal?.addEventListener('abort', onAbort, { once: true });
+        if (signal?.aborted) {
+            onAbort();
+            return;
+        }
+        bridge.searchAudiobookBay(requestId, query, page);
+    });
+}
+
+function rankAudiobookResults(results, query) {
+    const tokens = String(query).toLowerCase().match(/[a-z0-9]+/g) || [];
+    const normalizedQuery = tokens.join(' ');
+    return [...(results || [])]
+        .map((item, index) => {
+            const title = String(item.title || '').toLowerCase().match(/[a-z0-9]+/g)?.join(' ') || '';
+            const author = String(item.author || '').toLowerCase().match(/[a-z0-9]+/g)?.join(' ') || '';
+            const description = String(item.description || '').toLowerCase().match(/[a-z0-9]+/g)?.join(' ') || '';
+            const words = `${title} ${author} ${description}`.split(' ');
+            const titleWords = title.split(' ');
+            const authorWords = author.split(' ');
+            const textHits = tokens.filter(token => words.includes(token)).length;
+            const titleHits = tokens.filter(token => titleWords.includes(token)).length;
+            const authorHits = tokens.filter(token => authorWords.includes(token)).length;
+            let score = textHits * 10 + titleHits * 20 + authorHits * 20;
+            if (normalizedQuery && (title.includes(normalizedQuery) || author.includes(normalizedQuery))) score += 100;
+            if (tokens.length && (titleHits === tokens.length || authorHits === tokens.length)) score += 50;
+            return { item, index, score };
+        })
+        .sort((a, b) => b.score - a.score || a.index - b.index)
+        .map(entry => entry.item);
+}
 // Only search on Enter key press (not as-you-type to avoid rate limiting)
 
 searchInput.addEventListener('input', (e) => {
@@ -150,17 +214,33 @@ export async function performSearch(query, append = false) {
     showLoading(append ? 'Loading more...' : `Searching for "${requestedQuery}"...`);
 
     try {
-        const response = await fetch(
-            `/api/search?q=${encodeURIComponent(requestedQuery)}&type=${encodeURIComponent(requestedType)}&offset=${state.searchOffset}`,
-            { signal: controller.signal },
-        );
-        const data = await response.json();
+        let data;
+        const useNativeAudiobookSearch = requestedType === 'audiobook'
+            && !/^https?:\/\//i.test(requestedQuery)
+            && typeof window.FreedifyAndroid?.searchAudiobookBay === 'function';
+
+        if (useNativeAudiobookSearch) {
+            const page = Math.floor(state.searchOffset / 8) + 1;
+            const payload = await searchAudiobookBayWithAndroid(requestedQuery, page, controller.signal);
+            data = {
+                results: rankAudiobookResults(payload?.results, requestedQuery),
+                query: requestedQuery,
+                type: 'audiobook',
+                source: 'audiobookbay-webview',
+                offset: state.searchOffset,
+            };
+        } else {
+            const response = await fetch(
+                `/api/search?q=${encodeURIComponent(requestedQuery)}&type=${encodeURIComponent(requestedType)}&offset=${state.searchOffset}`,
+                { signal: controller.signal },
+            );
+            data = await response.json();
+            if (!response.ok) throw new Error(data.detail || 'Search failed');
+        }
 
         // A slower previous request must never replace results for the term the
         // user is currently looking at, which is especially noticeable on mobile.
         if (requestId !== searchRequestId) return;
-
-        if (!response.ok) throw new Error(data.detail || 'Search failed');
 
         hideLoading();
 
@@ -317,7 +397,7 @@ export function renderResults(results, type, append = false) {
             grid.innerHTML += renderAlbumCard({
                 id: book.id,
                 name: book.title,
-                artists: 'AudiobookBay',
+                artists: book.author || 'AudiobookBay',
                 album_art: book.cover_image,
                 total_tracks: 'Audiobook'
             });
