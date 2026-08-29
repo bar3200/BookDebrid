@@ -157,6 +157,8 @@ html.android-app body {
     color: #dfe2ff;
     font-size: 0.82rem;
     font-weight: 700;
+    align-items: center;
+    gap: 7px;
 }
 
 .android-app .android-library-btn:active {
@@ -169,9 +171,38 @@ html.android-app body {
 }
 
 .android-app .search-section {
+    position: relative;
+    z-index: 19;
+    flex-shrink: 0;
     padding: 10px 12px 12px;
     background: linear-gradient(180deg, rgba(9, 9, 18, 0.92), rgba(9, 9, 18, 0.65));
     border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.android-app .search-container {
+    display: block !important;
+    visibility: visible !important;
+}
+
+.android-app .audiobook-discovery-warning {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 12px 0 18px;
+    padding: 14px;
+    border: 1px solid rgba(245, 158, 11, 0.28);
+    border-radius: 16px;
+    background: rgba(245, 158, 11, 0.09);
+}
+
+.android-app .audiobook-discovery-warning p {
+    margin: 0;
+    color: #fde68a;
+}
+
+.android-app .audiobook-discovery-warning button {
+    flex: 0 0 auto;
 }
 
 .android-app .search-type-selector,

@@ -1,22 +1,31 @@
 import unittest
 from unittest.mock import patch
 
+import httpx
+
 from app import book_discovery_service
 from app.book_discovery_service import discover_similar_books, select_discovery_genres
 
 
 class FakeResponse:
-    def __init__(self, payload):
+    def __init__(self, payload, status_code=200, headers=None):
         self.payload = payload
+        self.status_code = status_code
+        self.headers = headers or {}
 
     def raise_for_status(self):
-        return None
+        if self.status_code >= 400:
+            request = httpx.Request("GET", "https://openlibrary.org/search.json")
+            response = httpx.Response(self.status_code, request=request, headers=self.headers)
+            raise httpx.HTTPStatusError("upstream error", request=request, response=response)
 
     def json(self):
         return self.payload
 
 
 class FakeClient:
+    calls = []
+
     def __init__(self, *args, **kwargs):
         pass
 
@@ -28,6 +37,7 @@ class FakeClient:
 
     async def get(self, url, **kwargs):
         params = kwargs.get("params") or {}
+        self.calls.append(params)
         if url.endswith("/search.json") and params.get("title"):
             return FakeResponse({
                 "docs": [{
@@ -51,6 +61,7 @@ class FakeClient:
 class BookDiscoveryTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         book_discovery_service._cache.clear()
+        FakeClient.calls.clear()
 
     def test_genres_prefer_useful_shelves_and_remove_noise(self):
         genres = select_discovery_genres([
@@ -61,7 +72,8 @@ class BookDiscoveryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(genres, ["Science Fiction", "Fantasy fiction", "Fiction"])
 
     async def test_discovery_excludes_seed_and_deduplicates_related_works(self):
-        with patch("app.book_discovery_service.httpx.AsyncClient", FakeClient, create=True):
+        with patch("app.book_discovery_service.httpx.AsyncClient", FakeClient, create=True), \
+             patch("app.book_discovery_service.asyncio.sleep", return_value=None):
             result = await discover_similar_books("Dune", "Frank Herbert")
 
         self.assertEqual(result["genres"][:2], ["Science Fiction", "Adventure"])
@@ -73,6 +85,26 @@ class BookDiscoveryTests(unittest.IsolatedAsyncioTestCase):
             result["recommendations"][0]["availability_query"],
             "Foundation Isaac Asimov",
         )
+
+    async def test_supplied_genres_avoid_extra_metadata_request(self):
+        with patch("app.book_discovery_service.httpx.AsyncClient", FakeClient, create=True):
+            result = await discover_similar_books("Dune", "Frank Herbert", ["Science Fiction"])
+
+        self.assertEqual(len(FakeClient.calls), 1)
+        self.assertIn("q", FakeClient.calls[0])
+        self.assertEqual(result["genres"], ["Science Fiction"])
+
+    async def test_temporary_upstream_failure_returns_retryable_result(self):
+        class UnavailableClient(FakeClient):
+            async def get(self, url, **kwargs):
+                return FakeResponse({}, status_code=503)
+
+        with patch("app.book_discovery_service.httpx.AsyncClient", UnavailableClient, create=True), \
+             patch("app.book_discovery_service.asyncio.sleep", return_value=None):
+            result = await discover_similar_books("Dune", "Frank Herbert")
+
+        self.assertEqual(result["recommendations"], [])
+        self.assertIn("temporarily unavailable", result["warning"])
 
 
 if __name__ == "__main__":

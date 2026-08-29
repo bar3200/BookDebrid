@@ -597,6 +597,12 @@ function openBookInfoModal(book) {
     getBookGenres(book).slice(0, 4).forEach(genre => {
         badgeHtml += `<span class="book-info-badge genres">${escapeHtml(genre)}</span>`;
     });
+    if (book.goodreads_rating) {
+        badgeHtml += `<span class="book-info-badge rating goodreads-summary">⭐ ${escapeHtml(book.goodreads_rating)}</span>`;
+    }
+    if (book.goodreads_rating_count) {
+        badgeHtml += `<span class="book-info-badge goodreads-summary">${escapeHtml(book.goodreads_rating_count)}</span>`;
+    }
     badgesEl.innerHTML = badgeHtml;
 
     // Description
@@ -626,7 +632,8 @@ function openBookInfoModal(book) {
             document.getElementById('book-info-desc-tab').classList.toggle('active', target === 'description');
             document.getElementById('book-info-reviews-tab').classList.toggle('active', target === 'reviews');
 
-            // Lazy-load Goodreads data on first tab click
+            // Opening the modal already starts this lookup so the score and
+            // rating count are available even if Reviews is never selected.
             if (target === 'reviews' && !modal._goodreadsLoaded) {
                 modal._goodreadsLoaded = true;
                 fetchGoodreadsData(book);
@@ -782,6 +789,8 @@ function openBookInfoModal(book) {
 
     // Show modal
     modal.classList.remove('hidden');
+    modal._goodreadsLoaded = true;
+    fetchGoodreadsData(book);
 }
 
 async function refreshBookChapters(book) {
@@ -851,11 +860,10 @@ async function fetchGoodreadsData(book) {
 
         // Update badges with Goodreads rating
         if (data.rating) {
-            const starCount = Math.round(parseFloat(data.rating));
-            const stars = '★'.repeat(starCount) + '☆'.repeat(5 - starCount);
-            badgesEl.innerHTML += `<span class="book-info-badge rating">⭐ ${data.rating}</span>`;
+            badgesEl.querySelectorAll('.goodreads-summary').forEach(element => element.remove());
+            badgesEl.innerHTML += `<span class="book-info-badge rating goodreads-summary">⭐ ${escapeHtml(data.rating)}</span>`;
             if (data.rating_count) {
-                badgesEl.innerHTML += `<span class="book-info-badge">${data.rating_count}</span>`;
+                badgesEl.innerHTML += `<span class="book-info-badge goodreads-summary">${escapeHtml(data.rating_count)}</span>`;
             }
         }
 
@@ -877,6 +885,8 @@ async function fetchGoodreadsData(book) {
             book.description = data.description;
         }
         if (data.rating) book.goodreads_rating = data.rating;
+        if (data.rating_count) book.goodreads_rating_count = data.rating_count;
+        if (data.review_count) book.goodreads_review_count = data.review_count;
         if (data.url) book.goodreads_url = data.url;
         saveAudiobookFavorites();
 
@@ -961,6 +971,7 @@ async function showSimilarBooks(book) {
 
         hideLoading();
         const recommendations = data.recommendations || [];
+        const warning = data.warning || '';
         const genreText = (data.genres || []).slice(0, 3).join(' · ');
         resultsContainer.innerHTML = `
             <section class="audiobook-discovery-view">
@@ -972,6 +983,7 @@ async function showSimilarBooks(book) {
                         ${genreText ? `<p>${escapeHtml(genreText)}</p>` : ''}
                     </div>
                 </div>
+                ${warning ? `<div class="audiobook-discovery-warning" role="status"><p>${escapeHtml(warning)}</p><button id="discovery-retry" class="album-action-btn primary">Try again</button></div>` : ''}
                 ${recommendations.length ? `
                     <div class="audiobook-discovery-grid">
                         ${recommendations.map(item => `
@@ -992,6 +1004,7 @@ async function showSimilarBooks(book) {
         `;
         resultsContainer.dataset.androidView = 'discovery';
         document.getElementById('discovery-back-books')?.addEventListener('click', renderMyBooksView);
+        document.getElementById('discovery-retry')?.addEventListener('click', () => showSimilarBooks(book));
         resultsContainer.querySelectorAll('.discovery-find-audio').forEach(button => {
             button.addEventListener('click', () => {
                 const query = button.dataset.query;

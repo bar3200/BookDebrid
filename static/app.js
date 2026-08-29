@@ -443,14 +443,22 @@ if (isAndroidApp) {
         button.classList.toggle('active', button.dataset.type === 'audiobook');
     });
     searchInput.placeholder = 'Search title, author, or paste a link';
-    renderMyBooksView();
     const libraryButton = document.getElementById('android-library-btn');
-    libraryButton?.addEventListener('click', () => {
-        searchInput.value = '';
+    const showAndroidLibrary = () => {
+        hideLoading();
+        document.getElementById('error-message')?.classList.add('hidden');
+        document.querySelectorAll('.book-info-modal:not(.hidden), .album-modal:not(.hidden), .modal:not(.hidden)')
+            .forEach(element => element.classList.add('hidden'));
         detailView?.classList.add('hidden');
         resultsSection?.classList.remove('hidden');
         renderMyBooksView();
-    });
+        searchInput?.focus({ preventScroll: true });
+        searchInput?.blur();
+    };
+    libraryButton?.addEventListener('click', showAndroidLibrary);
+    window.FreedifyAndroidNavigation = window.FreedifyAndroidNavigation || {};
+    window.FreedifyAndroidNavigation.goHome = showAndroidLibrary;
+    renderMyBooksView();
     const prevButton = document.getElementById('prev-btn');
     const nextButton = document.getElementById('next-btn');
     if (prevButton) {

@@ -76,7 +76,12 @@
             <h1 class="logo"><span class="brand-text">Freedify</span></h1>
             <div class="header-actions">
                 <button id="hifi-btn" class="header-btn" title="HiFi Mode - Stream lossless FLAC (faster startup, more data)">HiFi</button>
-                <button id="android-library-btn" class="android-only android-library-btn" title="Open My Books">Library</button>
+                <button id="android-library-btn" type="button" class="android-only android-library-btn" title="Go to My Books" aria-label="Go to My Books">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="m3 11 9-8 9 8"></path><path d="M5 10v10h14V10"></path><path d="M9 20v-6h6v6"></path>
+                    </svg>
+                    <span>My Books</span>
+                </button>
                 <button id="settings-btn" class="header-btn settings-btn" title="Settings">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <circle cx="12" cy="12" r="3"></circle>

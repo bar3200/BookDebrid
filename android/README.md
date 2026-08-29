@@ -59,7 +59,7 @@ the first secret. Never commit the keystore or any password. Keep an encrypted,
 tested backup of the keystore and credentials: losing this signing identity
 means future APKs cannot update existing installations.
 
-Version `1.4.1` uses `versionCode` 14 and can update the persistently signed
+Version `1.4.2` uses `versionCode` 15 and can update the persistently signed
 `1.3.7` and `1.4.0` builds in place. Installations made from older ephemeral debug artifacts
 have a different signature and therefore require a one-time uninstall. That
 uninstall removes the app's stored settings, including the encrypted AllDebrid

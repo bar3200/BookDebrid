@@ -43,6 +43,8 @@ class AndroidWebBootstrapTests(unittest.TestCase):
         self.assertIn('id="book-info-similar-btn"', index)
         self.assertIn("/api/audiobooks/discover", views)
         self.assertIn("audiobook-genre-chip", views)
+        self.assertIn("fetchGoodreadsData(book);", views)
+        self.assertIn("goodreads_rating_count", views)
 
     def test_android_shell_is_audiobook_focused(self):
         index = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
@@ -50,11 +52,14 @@ class AndroidWebBootstrapTests(unittest.TestCase):
         styles = (ROOT / "static" / "styles.css").read_text(encoding="utf-8")
 
         self.assertIn('id="android-library-btn"', index)
+        self.assertIn('aria-label="Go to My Books"', index)
         self.assertIn('search-type-selector android-desktop-only', index)
         self.assertIn('class="settings-section android-desktop-only">\n                        <h3 class="settings-section-title">Local Files', index)
         self.assertIn("if (!isAndroidApp) {", app)
         self.assertIn("track?.source === 'audiobook'", app)
         self.assertIn("currentResults?.dataset.androidView !== 'library'", app)
+        self.assertIn("FreedifyAndroidNavigation.goHome", app)
+        self.assertIn("document.getElementById('error-message')?.classList.add('hidden')", app)
         self.assertIn(".android-app .search-type-selector", styles)
         self.assertIn(".android-app .settings-modal-content", styles)
         self.assertIn("keep its SDK traffic out of the audiobook APK", index)

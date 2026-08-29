@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import re
 import time
 from typing import Any
@@ -131,9 +132,34 @@ def _recommendation_from_work(work: dict[str, Any], genres: list[str]) -> dict[s
 
 
 async def _get_json(client: httpx.AsyncClient, url: str, **params: Any) -> dict[str, Any]:
-    response = await client.get(url, params=params, headers=OPEN_LIBRARY_HEADERS)
-    response.raise_for_status()
-    return response.json()
+    """Fetch Open Library JSON, retrying only temporary upstream failures."""
+    for attempt in range(3):
+        try:
+            response = await client.get(url, params=params, headers=OPEN_LIBRARY_HEADERS)
+            response.raise_for_status()
+            return response.json()
+        except (httpx.TimeoutException, httpx.NetworkError, httpx.HTTPStatusError) as error:
+            status = getattr(getattr(error, "response", None), "status_code", None)
+            retryable = status is None or status == 429 or status >= 500
+            if not retryable or attempt == 2:
+                raise
+            retry_after = getattr(getattr(error, "response", None), "headers", {}).get("Retry-After")
+            try:
+                delay = min(4.0, max(0.25, float(retry_after))) if retry_after else 0.75 * (2 ** attempt)
+            except (TypeError, ValueError):
+                delay = 0.75 * (2 ** attempt)
+            await asyncio.sleep(delay)
+
+
+def _unavailable_result(title: str, author: str, genres: list[str]) -> dict[str, Any]:
+    return {
+        "title": title,
+        "author": author,
+        "genres": genres,
+        "recommendations": [],
+        "source": "openlibrary",
+        "warning": "Book recommendations are temporarily unavailable. Try again in a moment.",
+    }
 
 
 async def discover_similar_books(
@@ -151,19 +177,29 @@ async def discover_similar_books(
     if cached and time.monotonic() - cached[0] < DISCOVERY_CACHE_TTL:
         return cached[1]
 
+    match: dict[str, Any] = {}
+    matched_genres = supplied_genres
+    related_docs: list[dict[str, Any]] = []
     async with httpx.AsyncClient(follow_redirects=True, timeout=15.0) as client:
-        search_data = await _get_json(
-            client,
-            f"{OPEN_LIBRARY_BASE}/search.json",
-            title=title,
-            author=author or None,
-            fields="key,title,author_name,subject,cover_i,first_publish_year",
-            limit=10,
-        )
-        docs = search_data.get("docs") or []
-        match = max(docs, key=lambda item: _book_score(item, title, author), default={})
-        if match and _book_score(match, title, author) < 60:
-            match = {}
+        # Saved ABB books often already have useful genres. In that case skip
+        # the metadata lookup, reducing Open Library traffic from two calls to
+        # one and avoiding its low anonymous rate limit.
+        if not supplied_genres:
+            try:
+                search_data = await _get_json(
+                    client,
+                    f"{OPEN_LIBRARY_BASE}/search.json",
+                    title=title,
+                    author=author or None,
+                    fields="key,title,author_name,subject,cover_i,first_publish_year",
+                    limit=10,
+                )
+            except httpx.HTTPError:
+                return _unavailable_result(title, author, supplied_genres)
+            docs = search_data.get("docs") or []
+            match = max(docs, key=lambda item: _book_score(item, title, author), default={})
+            if match and _book_score(match, title, author) < 60:
+                match = {}
         matched_genres = select_discovery_genres(
             supplied_genres + list(match.get("subject") or []),
             limit=4,
@@ -172,20 +208,31 @@ async def discover_similar_books(
         if not lookup_genres and matched_genres:
             lookup_genres = matched_genres[:1]
 
-        related_docs: list[dict[str, Any]] = []
         if lookup_genres:
             subject_query = " AND ".join(
                 f'subject_key:"{re.sub(r"[^a-z0-9]+", "_", genre.lower()).strip("_")}"'
                 for genre in lookup_genres
             )
-            related_data = await _get_json(
-                client,
-                f"{OPEN_LIBRARY_BASE}/search.json",
-                q=subject_query,
-                fields="key,title,author_name,subject,cover_i,first_publish_year",
-                limit=max(20, limit * 2),
-            )
-            related_docs = related_data.get("docs") or []
+            # Open Library asks anonymous clients to stay around one request
+            # per second. A metadata lookup immediately followed by discovery
+            # otherwise produces intermittent 429/502 errors on Android.
+            if not supplied_genres:
+                await asyncio.sleep(1.05)
+            try:
+                related_data = await _get_json(
+                    client,
+                    f"{OPEN_LIBRARY_BASE}/search.json",
+                    q=subject_query,
+                    fields="key,title,author_name,subject,cover_i,first_publish_year",
+                    limit=max(20, limit * 2),
+                )
+                related_docs = related_data.get("docs") or []
+            except httpx.HTTPError:
+                return _unavailable_result(
+                    match.get("title") or title,
+                    (match.get("author_name") or [author or ""])[0],
+                    matched_genres,
+                )
 
     seed_title = _normalize(title)
     recommendations: list[dict[str, Any]] = []
