@@ -98,6 +98,8 @@ html.android-app body {
 }
 
 .android-app .logo {
+    min-width: 0;
+    flex: 0 1 auto;
     font-size: 1.2rem;
     letter-spacing: -0.03em;
 }
@@ -123,6 +125,7 @@ html.android-app body {
 }
 
 .android-app .logo::before {
+    flex: 0 0 28px;
     content: '';
     width: 28px;
     height: 28px;
@@ -145,6 +148,7 @@ html.android-app body {
 }
 
 .android-app .header-actions {
+    flex: 0 0 auto;
     gap: 8px;
 }
 
@@ -159,6 +163,20 @@ html.android-app body {
     font-weight: 700;
     align-items: center;
     gap: 7px;
+    flex-wrap: nowrap;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+.android-app .android-library-btn svg {
+    width: 21px;
+    height: 21px;
+    flex: 0 0 21px;
+}
+
+.android-app .settings-btn svg {
+    width: 23px;
+    height: 23px;
 }
 
 .android-app .android-library-btn:active {
@@ -552,10 +570,28 @@ html.android-app body {
 .android-app .album-action-btn,
 .android-app #audiobook-fav-btn,
 .android-app .btn-secondary {
+    display: inline-flex;
+    max-width: 100%;
+    min-width: 0;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
     min-height: 50px;
     padding: 12px 16px;
     border-radius: 15px;
     font-size: 0.92rem;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+    text-align: center;
+    white-space: normal;
+}
+
+.android-app .album-action-btn svg,
+.android-app #audiobook-fav-btn svg,
+.android-app .btn-secondary svg {
+    width: 22px;
+    height: 22px;
+    flex: 0 0 22px;
 }
 
 .android-app #audiobook-fav-btn,
@@ -718,6 +754,8 @@ html.android-app body {
 }
 
 .android-app .player-info {
+    min-width: 0;
+    flex: 1 1 auto;
     width: auto;
     margin: 0;
     padding: 0;
@@ -732,6 +770,7 @@ html.android-app body {
 }
 
 .android-app .player-details {
+    min-width: 0;
     max-width: none;
 }
 
@@ -742,6 +781,7 @@ html.android-app body {
 }
 
 .android-app .player-controls-primary {
+    flex: 0 0 auto;
     width: auto;
     margin: 0;
     gap: 2px;
@@ -832,8 +872,9 @@ html.android-app body {
 .android-app.music-playing .player-more-menu .android-music-action {
     display: flex;
     width: 100%;
-    height: 52px;
-    padding: 0 14px;
+    height: auto;
+    min-height: 54px;
+    padding: 9px 14px;
     gap: 14px;
     flex-direction: row;
     justify-content: flex-start;
@@ -852,13 +893,14 @@ html.android-app body {
     line-height: 1.2;
     text-align: left;
     text-overflow: clip;
-    white-space: nowrap;
+    overflow-wrap: anywhere;
+    white-space: normal;
 }
 
 .android-app .player-more-menu .control-btn > [aria-hidden="true"] {
-    width: 24px;
-    flex: 0 0 24px;
-    font-size: 1.2rem;
+    width: 27px;
+    flex: 0 0 27px;
+    font-size: 1.35rem;
     line-height: 1;
     text-align: center;
 }
@@ -907,13 +949,61 @@ html.android-app body {
 }
 
 @media (max-width: 380px) {
+    .android-app .header {
+        padding-inline: 10px;
+    }
+
+    .android-app .header-actions {
+        gap: 6px;
+    }
+
+    .android-app .android-library-btn {
+        width: 42px;
+        min-width: 42px;
+        padding: 0;
+    }
+
+    .android-app .android-library-btn span {
+        display: none;
+    }
+
+    .android-app .android-library-btn svg {
+        width: 23px;
+        height: 23px;
+        flex-basis: 23px;
+    }
+
+    .android-app .brand-text::after {
+        font-size: 1.06rem;
+    }
+
+    .android-app .logo::before {
+        width: 26px;
+        height: 26px;
+        flex-basis: 26px;
+    }
+
     .android-app .album-modal-art {
         width: 112px;
         height: 112px;
     }
 
-    .android-app #more-controls-btn {
-        display: none;
+    .android-app .player-bar {
+        padding-inline: 9px;
+    }
+
+    .android-app .player-main-row {
+        gap: 6px;
+    }
+
+    .android-app .player-art {
+        width: 40px;
+        height: 40px;
+    }
+
+    .android-app .player-controls-primary .control-btn {
+        width: 38px;
+        height: 38px;
     }
 
     .android-app .book-info-actions {
@@ -922,6 +1012,21 @@ html.android-app body {
 
     .android-app .book-info-actions .album-action-btn {
         grid-column: 1;
+    }
+
+    .android-app .book-info-gr-header,
+    .android-app .audiobook-discovery-warning {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .android-app .book-info-gr-rating {
+        flex-wrap: wrap;
+    }
+
+    .android-app .audiobook-discovery-warning button,
+    .android-app .audiobook-discovery-header > button {
+        width: 100%;
     }
 }
 

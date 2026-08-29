@@ -55,6 +55,8 @@ class AndroidWebBootstrapTests(unittest.TestCase):
         self.assertIn('aria-label="Go to My Books"', index)
         self.assertIn("document.title = 'BookDebrid'", index)
         self.assertIn("content: 'BookDebrid'", styles)
+        self.assertIn(".android-app .android-library-btn span", styles)
+        self.assertIn("? 'Search audiobooks'", app)
         self.assertIn('search-type-selector android-desktop-only', index)
         self.assertIn('class="settings-section android-desktop-only">\n                        <h3 class="settings-section-title">Local Files', index)
         self.assertIn("if (!isAndroidApp) {", app)
@@ -80,6 +82,20 @@ class AndroidWebBootstrapTests(unittest.TestCase):
         self.assertIn('android-seek-label">+15', index)
         self.assertIn('"Back 15 seconds"', service)
         self.assertIn('"Forward 15 seconds"', service)
+
+    def test_android_uses_full_size_adaptive_bookdebrid_icon(self):
+        manifest = (
+            ROOT / "android/app/src/main/AndroidManifest.xml"
+        ).read_text(encoding="utf-8")
+        adaptive = (
+            ROOT / "android/app/src/main/res/mipmap-anydpi-v26/ic_bookdebrid.xml"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn('android:icon="@mipmap/ic_bookdebrid"', manifest)
+        self.assertIn('android:roundIcon="@mipmap/ic_bookdebrid_round"', manifest)
+        self.assertIn('@color/bookdebrid_icon_background', adaptive)
+        self.assertIn('@drawable/ic_bookdebrid_foreground', adaptive)
+        self.assertTrue((ROOT / "android/app/src/main/res/drawable-xxxhdpi/ic_bookdebrid_foreground.png").is_file())
 
 
 if __name__ == "__main__":

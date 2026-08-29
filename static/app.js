@@ -41,7 +41,7 @@ import {
     renderMyPodcastsView, renderMyBooksView, showLyricsModal,
     showMusicVideo, initPlaylistExportImport, initAudiobooks,
     openAudiobook,
-} from './views.js';
+} from './views.js?t=1788022800';
 import {
     updateMediaSession, submitNowPlaying, submitScrobble,
     updateMiniPlayer, toggleMiniPlayer, openAddToPlaylistModal,
@@ -442,7 +442,9 @@ if (isAndroidApp) {
     document.querySelectorAll('.type-btn, .type-btn-menu').forEach((button) => {
         button.classList.toggle('active', button.dataset.type === 'audiobook');
     });
-    searchInput.placeholder = 'Search title, author, or paste a link';
+    searchInput.placeholder = window.matchMedia('(max-width: 380px)').matches
+        ? 'Search audiobooks'
+        : 'Search title, author, or paste a link';
     const libraryButton = document.getElementById('android-library-btn');
     const showAndroidLibrary = () => {
         hideLoading();
