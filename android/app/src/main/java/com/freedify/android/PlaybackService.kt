@@ -19,7 +19,7 @@ import androidx.media.session.MediaButtonReceiver
 
 class PlaybackService : Service() {
     private lateinit var mediaSession: MediaSessionCompat
-    private var title = "Freedify"
+    private var title = "Freedify Audiobooks"
     private var artist = "Ready to play"
     private var album = ""
     private var playing = false
@@ -65,7 +65,7 @@ class PlaybackService : Service() {
     }
 
     private fun applyMetadata(newTitle: String, newArtist: String, newAlbum: String) {
-        title = newTitle.ifBlank { "Freedify" }
+        title = newTitle.ifBlank { "Freedify Audiobooks" }
         artist = newArtist.ifBlank { "Unknown artist" }
         album = newAlbum
         updateMediaState()
@@ -149,7 +149,7 @@ class PlaybackService : Service() {
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .addAction(
                 android.R.drawable.ic_media_previous,
-                "Previous",
+                "Back 15 seconds",
                 MediaButtonReceiver.buildMediaButtonPendingIntent(
                     this,
                     PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS,
@@ -158,7 +158,7 @@ class PlaybackService : Service() {
             .addAction(playPauseAction)
             .addAction(
                 android.R.drawable.ic_media_next,
-                "Next",
+                "Forward 15 seconds",
                 MediaButtonReceiver.buildMediaButtonPendingIntent(
                     this,
                     PlaybackStateCompat.ACTION_SKIP_TO_NEXT,
@@ -179,7 +179,7 @@ class PlaybackService : Service() {
                 getString(R.string.notification_channel_name),
                 NotificationManager.IMPORTANCE_LOW,
             ).apply {
-                description = "Playback controls for Freedify audio"
+                description = "Audiobook playback controls"
                 setShowBadge(false)
             }
             getSystemService(NotificationManager::class.java).createNotificationChannel(channel)

@@ -293,6 +293,7 @@ export async function performSearch(query, append = false) {
 
 export function renderResults(results, type, append = false) {
     const loadMoreBtn = $('#load-more-btn');
+    if (type === 'audiobook') resultsContainer.dataset.androidView = 'search';
 
     // Store results for re-rendering (when sort changes)
     if (!append) {

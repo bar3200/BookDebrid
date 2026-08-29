@@ -405,6 +405,7 @@ function getBookGenres(book) {
 
 function renderMyBooksView() {
     const resultsContainer = document.getElementById('results-container');
+    resultsContainer.dataset.androidView = 'library';
 
     const genres = [...new Set(state.audiobookFavorites.flatMap(getBookGenres))]
         .sort((a, b) => a.localeCompare(b));
@@ -989,6 +990,7 @@ async function showSimilarBooks(book) {
                 ` : `<div class="empty-state"><p>No similar books were found for the available metadata.</p></div>`}
             </section>
         `;
+        resultsContainer.dataset.androidView = 'discovery';
         document.getElementById('discovery-back-books')?.addEventListener('click', renderMyBooksView);
         resultsContainer.querySelectorAll('.discovery-find-audio').forEach(button => {
             button.addEventListener('click', () => {

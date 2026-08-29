@@ -358,7 +358,10 @@ function renderCacheStats(stats) {
     if (libraryToggle) libraryToggle.checked = !!stats.library_mode;
 
     if (cacheUsageEl) {
-        const tracks = stats.file_count === 1 ? '1 track' : `${stats.file_count} tracks`;
+        const isAndroid = document.documentElement.classList.contains('android-app');
+        const tracks = isAndroid
+            ? (stats.file_count === 1 ? '1 cached audio file' : `${stats.file_count} cached audio files`)
+            : (stats.file_count === 1 ? '1 track' : `${stats.file_count} tracks`);
         let txt = `Cache: ${formatSize(stats.used_mb)} of ${formatSize(stats.max_mb)} — ${tracks}.`;
         if (stats.library_mode || stats.library_track_count > 0) {
             const lt = stats.library_track_count === 1 ? '1 track' : `${stats.library_track_count} tracks`;

@@ -81,6 +81,7 @@ security details, and the Android-specific limitations.
 
 ### 📚 Audiobooks
 - **Important Note:** Streaming audiobooks requires a **Premiumize.me or AllDebrid account** for caching torrents. Configure the matching API key; if both are configured, you can choose the provider in the audiobook dialog.
+- **Focused Android App** - The APK presents an audiobook-only shell and hides unrelated music, podcast, playlist, and desktop integrations while leaving the full hosted web app unchanged
 - **My Books** - Audiobook bookshelf to save, organize, and resume your audiobooks
 - **AudiobookBay Search** - Search and download audiobooks via AudiobookBay with Premiumize or AllDebrid
 - **Book Info Modal** - Click any book for cover art, description, chapters, and play/resume controls

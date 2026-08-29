@@ -66,6 +66,10 @@ html.android-app {
     display: none !important;
 }
 
+.android-app span.android-only {
+    display: inline-flex !important;
+}
+
 html.android-app body {
     background:
         radial-gradient(circle at 15% -10%, rgba(99, 102, 241, 0.22), transparent 36%),
@@ -109,6 +113,15 @@ html.android-app body {
     filter: none;
 }
 
+.android-app .brand-text {
+    font-size: 0;
+}
+
+.android-app .brand-text::after {
+    content: 'Audiobooks';
+    font-size: 1.16rem;
+}
+
 .android-app .logo::before {
     content: '';
     width: 28px;
@@ -131,15 +144,39 @@ html.android-app body {
     background: rgba(255, 255, 255, 0.055);
 }
 
+.android-app .header-actions {
+    gap: 8px;
+}
+
+.android-app .android-library-btn {
+    min-height: 42px;
+    padding: 0 15px;
+    border: 1px solid rgba(129, 140, 248, 0.3);
+    border-radius: 999px;
+    background: rgba(99, 102, 241, 0.13);
+    color: #dfe2ff;
+    font-size: 0.82rem;
+    font-weight: 700;
+}
+
+.android-app .android-library-btn:active {
+    transform: scale(0.96);
+}
+
 .android-app .settings-btn:active {
     transform: scale(0.94);
     background: rgba(129, 140, 248, 0.2);
 }
 
 .android-app .search-section {
-    padding: 10px 12px 8px;
+    padding: 10px 12px 12px;
     background: linear-gradient(180deg, rgba(9, 9, 18, 0.92), rgba(9, 9, 18, 0.65));
     border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.android-app .search-type-selector,
+.android-app #search-more-menu {
+    display: none !important;
 }
 
 .android-app .search-input {
@@ -216,6 +253,25 @@ html.android-app body {
     gap: 12px;
 }
 
+.android-app .audiobook-search-card-wrapper,
+.android-app .book-fav-item {
+    min-width: 0;
+}
+
+.android-app .audiobook-search-card-wrapper .album-card-art,
+.android-app .book-fav-item > img {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 2 / 3;
+    object-fit: cover;
+}
+
+.android-app .book-fav-item .podcast-fav-btn {
+    width: 42px;
+    height: 42px;
+    opacity: 1;
+}
+
 .android-app .album-card,
 .android-app .dashboard-card {
     border: 1px solid rgba(255, 255, 255, 0.07);
@@ -255,6 +311,59 @@ html.android-app body {
     background: rgba(255, 255, 255, 0.035);
 }
 
+.android-app .track-item .track-actions {
+    flex: 0 0 auto;
+}
+
+.android-app .track-name,
+.android-app .track-artist {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.android-app .detail-view {
+    padding-top: var(--safe-top);
+    padding-bottom: calc(116px + var(--safe-bottom));
+}
+
+.android-app .detail-header {
+    min-height: 58px;
+    padding: 8px 12px;
+    background: rgba(15, 15, 25, 0.96);
+}
+
+.android-app .detail-actions {
+    display: none;
+}
+
+.android-app .back-btn {
+    min-height: 44px;
+    padding: 8px 12px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.055);
+}
+
+.android-app .detail-info {
+    padding: 14px 16px;
+    background: rgba(255, 255, 255, 0.025);
+}
+
+.android-app .detail-art {
+    width: 76px;
+    height: 114px;
+    border-radius: 10px;
+}
+
+.android-app .detail-name {
+    text-align: left;
+    white-space: normal;
+}
+
+.android-app .detail-tracks {
+    padding: 10px 12px;
+}
+
 .android-app .album-modal,
 .android-app .book-info-modal {
     padding: 0;
@@ -281,6 +390,52 @@ html.android-app body {
     background: linear-gradient(165deg, #1b1b2b 0%, #101019 58%);
     box-shadow: 0 -20px 60px rgba(0, 0, 0, 0.45);
     animation: androidSheetIn 0.24s ease-out;
+}
+
+.android-app .book-info-header {
+    align-items: flex-start;
+}
+
+.android-app .book-info-art {
+    width: 112px;
+    height: 168px;
+}
+
+.android-app .book-info-meta {
+    justify-content: flex-start;
+    padding-top: 6px;
+}
+
+.android-app .book-info-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+}
+
+.android-app .book-info-actions .album-action-btn {
+    width: 100%;
+    min-width: 0;
+    padding-inline: 10px;
+}
+
+.android-app #book-info-play-btn,
+.android-app #book-info-delete-btn {
+    grid-column: 1 / -1;
+}
+
+.android-app .book-info-tabs {
+    position: sticky;
+    top: -22px;
+    z-index: 2;
+    margin-inline: -4px;
+    padding-top: 8px;
+    background: #141420;
+}
+
+.android-app .book-info-tab {
+    flex: 1;
+    min-height: 46px;
+    padding: 10px 8px;
 }
 
 .android-app .book-info-content {
@@ -408,6 +563,114 @@ html.android-app body {
     line-height: 1.65;
 }
 
+.android-app .settings-modal {
+    align-items: flex-end;
+    padding: 0;
+    background: rgba(3, 3, 8, 0.72);
+}
+
+.android-app .settings-modal-content {
+    width: 100%;
+    max-width: none;
+    max-height: 94dvh;
+    border-radius: 26px 26px 0 0;
+    border-bottom: 0;
+    background: linear-gradient(165deg, #1b1b2b 0%, #101019 58%);
+}
+
+.android-app .settings-modal-header {
+    min-height: 62px;
+    padding: 12px 18px;
+}
+
+.android-app .settings-close {
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.07);
+}
+
+.android-app .settings-modal-body {
+    gap: 14px;
+    padding: 14px 14px calc(22px + var(--safe-bottom));
+}
+
+.android-app .settings-section {
+    gap: 7px;
+    padding: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.035);
+}
+
+.android-app .settings-item {
+    min-height: 48px;
+    border-radius: 12px;
+}
+
+.android-app .settings-theme-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.android-app .theme-option {
+    min-height: 46px;
+    display: flex;
+    align-items: center;
+}
+
+.android-app .queue-section {
+    top: var(--safe-top);
+    bottom: 0;
+    max-height: none;
+    padding-bottom: calc(112px + var(--safe-bottom));
+    border-radius: 0;
+    background: rgba(13, 13, 22, 0.98);
+}
+
+.android-app .queue-header {
+    min-height: 60px;
+    padding: 10px 14px;
+}
+
+.android-app .queue-header h3 {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.android-app .queue-controls .export-dropdown-container,
+.android-app #queue-save-playlist-btn,
+.android-app #queue-clear,
+.android-app .crossfade-toggle,
+.android-app .queue-select-cb,
+.android-app .queue-heart-btn,
+.android-app .queue-remove-btn {
+    display: none !important;
+}
+
+.android-app .queue-close-btn {
+    width: 44px;
+    height: 44px;
+    border-radius: 14px;
+}
+
+.android-app .queue-container {
+    padding: 10px 12px 22px;
+}
+
+.android-app .queue-item {
+    min-height: 64px;
+    border-bottom-color: rgba(255, 255, 255, 0.06);
+}
+
+.android-app .detail-view .track-actions button,
+.android-app .detail-view .queue-btn,
+.android-app .detail-view .star-btn,
+.android-app .detail-view .info-btn {
+    display: none !important;
+}
+
 .android-app .player-bar {
     padding: 9px 12px calc(9px + var(--safe-bottom));
     background: rgba(18, 18, 28, 0.9);
@@ -455,9 +718,17 @@ html.android-app body {
 }
 
 .android-app .player-controls-primary .control-btn {
-    width: 42px;
-    height: 42px;
+    width: 40px;
+    height: 40px;
     font-size: 1rem;
+}
+
+.android-app .android-seek-label {
+    align-items: center;
+    justify-content: center;
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: -0.04em;
 }
 
 .android-app .player-controls-primary #play-btn {
@@ -482,7 +753,6 @@ html.android-app body {
     height: 22px;
 }
 
-.android-app .player-controls-primary #prev-btn,
 .android-app .player-controls-primary #fs-toggle-btn {
     display: none;
 }
@@ -589,14 +859,38 @@ html.android-app body {
     width: auto;
 }
 
+.android-app .loading-content {
+    width: min(300px, calc(100vw - 40px));
+    padding: 24px 20px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 20px;
+    background: rgba(22, 22, 35, 0.96);
+}
+
+.android-app .error-message {
+    left: 12px;
+    right: 12px;
+    width: auto;
+    max-width: none;
+    border-radius: 18px;
+}
+
 @media (max-width: 380px) {
     .android-app .album-modal-art {
         width: 112px;
         height: 112px;
     }
 
-    .android-app .player-controls-primary #next-btn {
+    .android-app #more-controls-btn {
         display: none;
+    }
+
+    .android-app .book-info-actions {
+        grid-template-columns: 1fr;
+    }
+
+    .android-app .book-info-actions .album-action-btn {
+        grid-column: 1;
     }
 }
 

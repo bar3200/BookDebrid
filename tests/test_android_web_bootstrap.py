@@ -44,6 +44,36 @@ class AndroidWebBootstrapTests(unittest.TestCase):
         self.assertIn("/api/audiobooks/discover", views)
         self.assertIn("audiobook-genre-chip", views)
 
+    def test_android_shell_is_audiobook_focused(self):
+        index = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
+        app = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
+        styles = (ROOT / "static" / "styles.css").read_text(encoding="utf-8")
+
+        self.assertIn('id="android-library-btn"', index)
+        self.assertIn('search-type-selector android-desktop-only', index)
+        self.assertIn('class="settings-section android-desktop-only">\n                        <h3 class="settings-section-title">Local Files', index)
+        self.assertIn("if (!isAndroidApp) {", app)
+        self.assertIn("track?.source === 'audiobook'", app)
+        self.assertIn("currentResults?.dataset.androidView !== 'library'", app)
+        self.assertIn(".android-app .search-type-selector", styles)
+        self.assertIn(".android-app .settings-modal-content", styles)
+        self.assertIn("keep its SDK traffic out of the audiobook APK", index)
+
+        integrations = (ROOT / "static" / "integrations.js").read_text(encoding="utf-8")
+        self.assertIn("Check initial LB status only in the full desktop/web experience", integrations)
+
+    def test_android_player_uses_audiobook_seek_labels(self):
+        index = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
+        service = (
+            ROOT
+            / "android/app/src/main/java/com/freedify/android/PlaybackService.kt"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn('android-seek-label">−15', index)
+        self.assertIn('android-seek-label">+15', index)
+        self.assertIn('"Back 15 seconds"', service)
+        self.assertIn('"Forward 15 seconds"', service)
+
 
 if __name__ == "__main__":
     unittest.main()

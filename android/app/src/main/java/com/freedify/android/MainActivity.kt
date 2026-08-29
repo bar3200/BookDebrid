@@ -5,6 +5,7 @@ import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.net.Uri
@@ -108,13 +109,13 @@ class MainActivity : AppCompatActivity() {
             setBackgroundColor(Color.rgb(18, 18, 24))
         }
         container.addView(TextView(this).apply {
-            text = "Connect AllDebrid"
-            textSize = 26f
+            text = "Freedify Audiobooks"
+            textSize = 28f
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
         })
         container.addView(TextView(this).apply {
-            text = "Enter an AllDebrid API key to start the private backend on this device. The key is encrypted with Android Keystore and never added to the APK."
+            text = "Connect AllDebrid to search, save, and listen without running a separate server. Your API key is encrypted with Android Keystore and never added to the APK."
             textSize = 16f
             setTextColor(Color.LTGRAY)
             gravity = Gravity.CENTER
@@ -123,7 +124,11 @@ class MainActivity : AppCompatActivity() {
         val input = apiKeyInput()
         container.addView(input, matchWidthWrapHeight())
         container.addView(Button(this).apply {
-            text = "Save and start Freedify"
+            text = "Save and open my library"
+            isAllCaps = false
+            textSize = 16f
+            minHeight = (52 * resources.displayMetrics.density).toInt()
+            backgroundTintList = ColorStateList.valueOf(Color.rgb(99, 102, 241))
             setOnClickListener {
                 val key = input.text.toString().trim()
                 if (key.isBlank()) {
@@ -174,9 +179,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun apiKeyInput() = EditText(this).apply {
-        hint = "ALLDEBRID_API_KEY"
+        hint = "AllDebrid API key"
         inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
         isSingleLine = true
+        minHeight = (54 * resources.displayMetrics.density).toInt()
+        setTextColor(Color.WHITE)
+        setHintTextColor(Color.rgb(150, 150, 165))
+        backgroundTintList = ColorStateList.valueOf(Color.rgb(129, 140, 248))
     }
 
     private fun launchFreedify(apiKey: String) {
