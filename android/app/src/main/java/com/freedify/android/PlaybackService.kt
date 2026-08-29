@@ -19,7 +19,7 @@ import androidx.media.session.MediaButtonReceiver
 
 class PlaybackService : Service() {
     private lateinit var mediaSession: MediaSessionCompat
-    private var title = "Freedify Audiobooks"
+    private var title = "BookDebrid"
     private var artist = "Ready to play"
     private var album = ""
     private var playing = false
@@ -65,7 +65,7 @@ class PlaybackService : Service() {
     }
 
     private fun applyMetadata(newTitle: String, newArtist: String, newAlbum: String) {
-        title = newTitle.ifBlank { "Freedify Audiobooks" }
+        title = newTitle.ifBlank { "BookDebrid" }
         artist = newArtist.ifBlank { "Unknown artist" }
         album = newAlbum
         updateMediaState()

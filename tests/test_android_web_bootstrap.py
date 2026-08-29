@@ -53,6 +53,8 @@ class AndroidWebBootstrapTests(unittest.TestCase):
 
         self.assertIn('id="android-library-btn"', index)
         self.assertIn('aria-label="Go to My Books"', index)
+        self.assertIn("document.title = 'BookDebrid'", index)
+        self.assertIn("content: 'BookDebrid'", styles)
         self.assertIn('search-type-selector android-desktop-only', index)
         self.assertIn('class="settings-section android-desktop-only">\n                        <h3 class="settings-section-title">Local Files', index)
         self.assertIn("if (!isAndroidApp) {", app)

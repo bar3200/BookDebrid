@@ -1,4 +1,4 @@
 <resources>
-    <string name="app_name">Freedify Audiobooks</string>
-    <string name="notification_channel_name">Audiobook playback</string>
+    <string name="app_name">BookDebrid</string>
+    <string name="notification_channel_name">BookDebrid playback</string>
 </resources>

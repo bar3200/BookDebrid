@@ -118,7 +118,7 @@ html.android-app body {
 }
 
 .android-app .brand-text::after {
-    content: 'Audiobooks';
+    content: 'BookDebrid';
     font-size: 1.16rem;
 }
 

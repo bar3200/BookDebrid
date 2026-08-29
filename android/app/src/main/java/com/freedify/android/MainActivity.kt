@@ -109,7 +109,7 @@ class MainActivity : AppCompatActivity() {
             setBackgroundColor(Color.rgb(18, 18, 24))
         }
         container.addView(TextView(this).apply {
-            text = "Freedify Audiobooks"
+            text = "BookDebrid"
             textSize = 28f
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
@@ -197,7 +197,7 @@ class MainActivity : AppCompatActivity() {
             onReady = { showWebView() },
             onError = { message ->
                 AlertDialog.Builder(this)
-                    .setTitle("Freedify could not start")
+                    .setTitle("BookDebrid could not start")
                     .setMessage(message)
                     .setPositiveButton("Edit API key") { _, _ -> showFirstRunScreen() }
                     .setCancelable(false)

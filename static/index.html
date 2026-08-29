@@ -9,6 +9,7 @@
     <script>
         if (navigator.userAgent.includes('FreedifyAndroid') || new URLSearchParams(location.search).has('androidPreview')) {
             document.documentElement.classList.add('android-app');
+            document.title = 'BookDebrid';
         }
     </script>
     <title>Freedify</title>
@@ -1153,7 +1154,7 @@
             const overlay = document.getElementById('error-message');
             const message = document.getElementById('error-text');
             const retry = document.getElementById('error-retry');
-            if (message) message.textContent = 'Freedify could not start. Close and reopen the app to retry.';
+            if (message) message.textContent = 'BookDebrid could not start. Close and reopen the app to retry.';
             if (retry) retry.onclick = () => location.reload();
             if (overlay) overlay.classList.remove('hidden');
         }
