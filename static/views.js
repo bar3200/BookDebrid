@@ -2069,6 +2069,9 @@ let currentAudiobookDetails = null;
 let audiobookPollInterval = null;
 let audiobookPollFailures = 0;
 let audiobookDebridConfig = null;
+const AUDIOBOOK_POLL_INTERVAL_MS = 5000;
+const AUDIOBOOK_POLL_TIMEOUT_MS = 40000;
+const AUDIOBOOK_MAX_POLL_FAILURES = 5;
 
 async function loadAudiobookDebridConfig() {
     if (audiobookDebridConfig) return audiobookDebridConfig;
@@ -2380,8 +2383,13 @@ async function pollAudiobookTransfer(transferId, provider = getAudiobookProvider
 
     const fetchStatus = async () => {
         audiobookPollInterval = null;
+        const controller = new AbortController();
+        const requestTimeout = setTimeout(() => controller.abort(), AUDIOBOOK_POLL_TIMEOUT_MS);
         try {
-            const res = await fetch(`/api/debrid/${provider}/transfer/${encodeURIComponent(transferId)}`);
+            const res = await fetch(
+                `/api/debrid/${provider}/transfer/${encodeURIComponent(transferId)}`,
+                { signal: controller.signal },
+            );
             const data = await res.json();
             if (!res.ok) throw new Error(data.detail || 'Transfer status request failed');
             audiobookPollFailures = 0;
@@ -2430,20 +2438,28 @@ async function pollAudiobookTransfer(transferId, provider = getAudiobookProvider
         } catch (e) {
             console.error('Polling error', e);
             audiobookPollFailures += 1;
-            if (audiobookPollFailures >= 3) {
+            if (audiobookPollFailures >= AUDIOBOOK_MAX_POLL_FAILURES) {
                 $('#audiobook-progress-status').textContent = `Could not check ${providerLabel} progress`;
                 $('#audiobook-progress-percent').textContent = '';
                 $('#audiobook-download-btn').disabled = false;
                 $('#audiobook-download-btn').textContent = 'Retry progress check';
                 $('#audiobook-download-btn').onclick = () => pollAudiobookTransfer(transferId, provider);
-                showError(e.message || 'Transfer status request failed');
+                const message = e.name === 'AbortError'
+                    ? `${providerLabel} status request timed out`
+                    : (e.message || 'Transfer status request failed');
+                showError(message);
                 return;
             }
-            $('#audiobook-progress-status').textContent = `Connection interrupted — retrying (${audiobookPollFailures}/3)...`;
+            $('#audiobook-progress-status').textContent = `Connection interrupted — retrying (${audiobookPollFailures}/${AUDIOBOOK_MAX_POLL_FAILURES})...`;
+        } finally {
+            clearTimeout(requestTimeout);
         }
 
         if (!audiobookModal.classList.contains('hidden')) {
-            audiobookPollInterval = setTimeout(fetchStatus, 3000);
+            const retryDelay = audiobookPollFailures > 0
+                ? Math.min(15000, AUDIOBOOK_POLL_INTERVAL_MS * audiobookPollFailures)
+                : AUDIOBOOK_POLL_INTERVAL_MS;
+            audiobookPollInterval = setTimeout(fetchStatus, retryDelay);
         }
     };
 

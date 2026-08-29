@@ -40,25 +40,37 @@ async def _make_request(
     if params:
         query_params.update(params)
 
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            if method == "GET":
-                response = await client.get(
-                    f"{API_BASE_URL}{endpoint}", headers=headers, params=query_params
-                )
-            elif method == "POST":
-                response = await client.post(
-                    f"{API_BASE_URL}{endpoint}",
-                    headers=headers,
-                    params=query_params,
-                    data=data,
-                )
-            else:
-                raise ValueError(f"Unsupported HTTP method: {method}")
-    except httpx.RequestError as exc:
+    response = None
+    last_request_error = None
+    for attempt in range(3):
+        try:
+            # Keep the total three-attempt window below the UI request timeout,
+            # so a stalled mobile connection cannot leave overlapping polls.
+            async with httpx.AsyncClient(timeout=12.0) as client:
+                if method == "GET":
+                    response = await client.get(
+                        f"{API_BASE_URL}{endpoint}", headers=headers, params=query_params
+                    )
+                elif method == "POST":
+                    response = await client.post(
+                        f"{API_BASE_URL}{endpoint}",
+                        headers=headers,
+                        params=query_params,
+                        data=data,
+                    )
+                else:
+                    raise ValueError(f"Unsupported HTTP method: {method}")
+            break
+        except httpx.RequestError as exc:
+            last_request_error = exc
+            if attempt < 2:
+                await asyncio.sleep(0.5 * (attempt + 1))
+
+    if response is None:
         raise HTTPException(
-            status_code=502, detail=f"Request to AllDebrid failed: {exc}"
-        ) from exc
+            status_code=502,
+            detail=f"Request to AllDebrid failed after 3 attempts: {last_request_error}",
+        ) from last_request_error
 
     try:
         payload = response.json()
@@ -124,7 +136,10 @@ def _normalise_transfer(magnet: dict) -> dict:
 
 async def check_transfer_status(transfer_id: str | None = None):
     params = {"id": transfer_id} if transfer_id else None
-    data = await _make_request("/v4.1/magnet/status", method="POST", data=params)
+    # AllDebrid supports both verbs for this endpoint. GET is more reliable in
+    # embedded Android environments because it avoids a fresh form-body upload
+    # on every polling request.
+    data = await _make_request("/v4.1/magnet/status", params=params)
     transfers = [_normalise_transfer(item) for item in data.get("magnets", [])]
     if transfer_id:
         return transfers[0] if transfers else None
@@ -219,9 +234,7 @@ async def list_folder_contents(magnet_id: str):
 
 async def search_my_files(query: str):
     """Search ready AllDebrid magnets by name (AllDebrid has no cloud search API)."""
-    data = await _make_request(
-        "/v4.1/magnet/status", method="POST", data={"status": "ready"}
-    )
+    data = await _make_request("/v4.1/magnet/status", params={"status": "ready"})
     terms = [term for term in query.lower().split() if term]
     results = []
     for magnet in data.get("magnets", []):

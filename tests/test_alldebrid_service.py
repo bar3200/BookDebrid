@@ -10,6 +10,8 @@ try:
 except ModuleNotFoundError:
     sys.modules["httpx"] = types.SimpleNamespace(RequestError=Exception, AsyncClient=object)
 
+import httpx
+
 try:
     import fastapi  # noqa: F401
 except ModuleNotFoundError:
@@ -140,8 +142,32 @@ class AllDebridServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["status"], "finished")
         self.assertEqual(result["folder_id"], "42")
         request.assert_awaited_once_with(
-            "/v4.1/magnet/status", method="POST", data={"id": "42"}
+            "/v4.1/magnet/status", params={"id": "42"}
         )
+
+    async def test_request_retries_transient_connection_failures(self):
+        failed_client = AsyncMock()
+        failed_client.get.side_effect = httpx.RequestError("connection reset")
+        failed_context = MagicMock()
+        failed_context.__aenter__ = AsyncMock(return_value=failed_client)
+        failed_context.__aexit__ = AsyncMock(return_value=None)
+
+        response = MagicMock()
+        response.json.return_value = {"status": "success", "data": {"ok": True}}
+        recovered_client = AsyncMock()
+        recovered_client.get.return_value = response
+        recovered_context = MagicMock()
+        recovered_context.__aenter__ = AsyncMock(return_value=recovered_client)
+        recovered_context.__aexit__ = AsyncMock(return_value=None)
+
+        with patch.dict("os.environ", {"ALLDEBRID_API_KEY": "runtime-key"}), patch(
+            "app.alldebrid_service.httpx.AsyncClient",
+            side_effect=[failed_context, recovered_context],
+        ), patch("app.alldebrid_service.asyncio.sleep", new_callable=AsyncMock) as sleep:
+            result = await alldebrid_service._make_request("/v4.1/magnet/status")
+
+        self.assertEqual(result, {"ok": True})
+        sleep.assert_awaited_once_with(0.5)
 
     @patch("app.alldebrid_service._make_request", new_callable=AsyncMock)
     async def test_list_folder_filters_audio_and_preserves_stable_links(self, request):
@@ -256,6 +282,9 @@ class AllDebridServiceTests(unittest.IsolatedAsyncioTestCase):
         results = await alldebrid_service.search_my_files("long book")
 
         self.assertEqual(results, [{"id": "1", "name": "The Long Book Audiobook", "type": "folder", "size": 100}])
+        request.assert_awaited_once_with(
+            "/v4.1/magnet/status", params={"status": "ready"}
+        )
 
     @patch("app.alldebrid_service._make_request", new_callable=AsyncMock)
     async def test_delete_uses_magnet_endpoint(self, request):

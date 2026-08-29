@@ -1100,13 +1100,13 @@
     <script src="https://apis.google.com/js/api.js"></script>
     <script src="https://accounts.google.com/gsi/client"></script>
     <script type="module">
-        const appUrl = '/static/app.js?t=1787846401';
+        const appUrl = '/static/app.js?t=1788019201';
         const isAndroidApp = document.documentElement.classList.contains('android-app');
 
         async function prepareAndroidRuntime() {
             if (!isAndroidApp || !('serviceWorker' in navigator)) return;
 
-            const cleanupVersion = 'freedify-android-cache-cleanup-v10';
+            const cleanupVersion = 'freedify-android-cache-cleanup-v11';
             const hadController = Boolean(navigator.serviceWorker.controller);
             try {
                 const registrations = await navigator.serviceWorker.getRegistrations();
