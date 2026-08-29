@@ -1,7 +1,7 @@
 import unittest
 import sys
 import types
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 # Keep these focused adapter tests runnable even when the full application
 # requirements have not been installed in the checkout environment.
@@ -9,6 +9,8 @@ try:
     import httpx  # noqa: F401
 except ModuleNotFoundError:
     sys.modules["httpx"] = types.SimpleNamespace(RequestError=Exception, AsyncClient=object)
+
+import httpx
 
 try:
     import fastapi  # noqa: F401
@@ -25,6 +27,27 @@ from app import alldebrid_service
 
 
 class AllDebridServiceTests(unittest.IsolatedAsyncioTestCase):
+    async def test_request_reads_api_key_at_call_time(self):
+        response = MagicMock()
+        response.json.return_value = {"status": "success", "data": {"ok": True}}
+        client = AsyncMock()
+        client.get.return_value = response
+
+        context = MagicMock()
+        context.__aenter__ = AsyncMock(return_value=client)
+        context.__aexit__ = AsyncMock(return_value=None)
+
+        with patch.dict("os.environ", {"ALLDEBRID_API_KEY": "runtime-key"}), patch(
+            "app.alldebrid_service.httpx.AsyncClient", return_value=context
+        ):
+            result = await alldebrid_service._make_request("/v4/test")
+
+        self.assertEqual(result, {"ok": True})
+        self.assertEqual(
+            client.get.await_args.kwargs["headers"],
+            {"Authorization": "Bearer runtime-key"},
+        )
+
     def test_flatten_files_preserves_nested_paths(self):
         tree = [
             {
@@ -59,6 +82,14 @@ class AllDebridServiceTests(unittest.IsolatedAsyncioTestCase):
             ],
         )
 
+    def test_natural_path_key_orders_numbered_chapters(self):
+        paths = ["Book/Chapter 10.mp3", "Book/Chapter 2.mp3", "Book/Chapter 1.mp3"]
+
+        self.assertEqual(
+            sorted(paths, key=alldebrid_service._natural_path_key),
+            ["Book/Chapter 1.mp3", "Book/Chapter 2.mp3", "Book/Chapter 10.mp3"],
+        )
+
     def test_normalise_transfer_maps_progress_and_ready_state(self):
         running = alldebrid_service._normalise_transfer(
             {"id": 123, "filename": "Book", "size": 200, "downloaded": 50, "statusCode": 1, "status": "Downloading"}
@@ -72,6 +103,15 @@ class AllDebridServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(ready["progress"], 1.0)
         self.assertEqual(ready["status"], "finished")
         self.assertEqual(ready["folder_id"], "123")
+
+    def test_normalise_transfer_accepts_string_status_code(self):
+        ready = alldebrid_service._normalise_transfer(
+            {"id": 456, "filename": "Book", "statusCode": "4", "status": "Ready"}
+        )
+
+        self.assertEqual(ready["status"], "finished")
+        self.assertEqual(ready["progress"], 1.0)
+        self.assertEqual(ready["folder_id"], "456")
 
     @patch("app.alldebrid_service._make_request", new_callable=AsyncMock)
     async def test_create_transfer_returns_common_shape(self, request):
@@ -87,6 +127,47 @@ class AllDebridServiceTests(unittest.IsolatedAsyncioTestCase):
             method="POST",
             data={"magnets[]": "magnet:?xt=urn:btih:test"},
         )
+
+    @patch("app.alldebrid_service._make_request", new_callable=AsyncMock)
+    async def test_transfer_status_filters_by_id_and_normalises_ready(self, request):
+        request.return_value = {
+            "magnets": [
+                {"id": 42, "filename": "Book", "statusCode": "4", "status": "Ready"}
+            ]
+        }
+
+        result = await alldebrid_service.check_transfer_status("42")
+
+        self.assertEqual(result["id"], "42")
+        self.assertEqual(result["status"], "finished")
+        self.assertEqual(result["folder_id"], "42")
+        request.assert_awaited_once_with(
+            "/v4.1/magnet/status", params={"id": "42"}
+        )
+
+    async def test_request_retries_transient_connection_failures(self):
+        failed_client = AsyncMock()
+        failed_client.get.side_effect = httpx.RequestError("connection reset")
+        failed_context = MagicMock()
+        failed_context.__aenter__ = AsyncMock(return_value=failed_client)
+        failed_context.__aexit__ = AsyncMock(return_value=None)
+
+        response = MagicMock()
+        response.json.return_value = {"status": "success", "data": {"ok": True}}
+        recovered_client = AsyncMock()
+        recovered_client.get.return_value = response
+        recovered_context = MagicMock()
+        recovered_context.__aenter__ = AsyncMock(return_value=recovered_client)
+        recovered_context.__aexit__ = AsyncMock(return_value=None)
+
+        with patch.dict("os.environ", {"ALLDEBRID_API_KEY": "runtime-key"}), patch(
+            "app.alldebrid_service.httpx.AsyncClient",
+            side_effect=[failed_context, recovered_context],
+        ), patch("app.alldebrid_service.asyncio.sleep", new_callable=AsyncMock) as sleep:
+            result = await alldebrid_service._make_request("/v4.1/magnet/status")
+
+        self.assertEqual(result, {"ok": True})
+        sleep.assert_awaited_once_with(0.5)
 
     @patch("app.alldebrid_service._make_request", new_callable=AsyncMock)
     async def test_list_folder_filters_audio_and_preserves_stable_links(self, request):
@@ -107,6 +188,27 @@ class AllDebridServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([item["name"] for item in result["audio_files"]], ["01.mp3", "02.m4b"])
         self.assertEqual(result["audio_files"][0]["source_link"], "https://alldebrid.com/f/one")
         self.assertEqual(result["audio_files"][0]["link"], "https://alldebrid.com/f/one")
+        self.assertFalse(result["chapter_scan"]["attempted"])
+
+    @patch("app.m4b_chapter_service.extract_m4b_chapters")
+    @patch("app.alldebrid_service.unlock_link", new_callable=AsyncMock)
+    @patch("app.alldebrid_service._make_request", new_callable=AsyncMock)
+    async def test_single_m4b_includes_embedded_chapters(self, request, unlock, extract):
+        request.return_value = {
+            "magnets": [{"files": [{"n": "Book.m4b", "s": 10, "l": "https://alldebrid.com/f/book"}]}]
+        }
+        unlock.return_value = "https://cdn.example/book.m4b"
+        extract.return_value = {
+            "duration": 30.0,
+            "chapters": [{"title": "Chapter One", "start": 0.0, "end": 30.0, "duration": 30.0}],
+        }
+
+        result = await alldebrid_service.list_folder_contents("42")
+
+        self.assertEqual(result["audio_files"][0]["chapters"], extract.return_value["chapters"])
+        self.assertEqual(result["chapter_scan"], {"attempted": True, "count": 1, "error": None})
+        unlock.assert_awaited_once_with("https://alldebrid.com/f/book")
+        extract.assert_called_once_with("https://cdn.example/book.m4b")
 
     @patch("app.alldebrid_service.unlock_link", new_callable=AsyncMock)
     async def test_refresh_generates_a_new_playable_link(self, unlock):
@@ -180,6 +282,9 @@ class AllDebridServiceTests(unittest.IsolatedAsyncioTestCase):
         results = await alldebrid_service.search_my_files("long book")
 
         self.assertEqual(results, [{"id": "1", "name": "The Long Book Audiobook", "type": "folder", "size": 100}])
+        request.assert_awaited_once_with(
+            "/v4.1/magnet/status", params={"status": "ready"}
+        )
 
     @patch("app.alldebrid_service._make_request", new_callable=AsyncMock)
     async def test_delete_uses_magnet_endpoint(self, request):

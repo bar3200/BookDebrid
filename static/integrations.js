@@ -18,6 +18,14 @@ import { savePlaylists, createPlaylist, addToPlaylist, saveLibrary, saveHistory,
 // ========== MEDIA SESSION API (Lock Screen Controls) ==========
 
 function updateMediaSession(track) {
+    if (window.FreedifyAndroid?.updateMetadata) {
+        window.FreedifyAndroid.updateMetadata(
+            track.name || 'Unknown Track',
+            track.artists || 'Unknown Artist',
+            track.album || '',
+        );
+    }
+
     if (!('mediaSession' in navigator)) return;
 
     const artworkSrc = track.album_art || '/static/icon.svg';
@@ -37,6 +45,37 @@ function updateMediaSession(track) {
     navigator.mediaSession.playbackState = 'playing';
 }
 
+let lastAndroidPlaybackSync = 0;
+function getMediaChapterPosition() {
+    const player = getActivePlayer();
+    const track = state.queue[state.currentIndex];
+    const start = Number.isFinite(Number(track?.chapter_start)) ? Number(track.chapter_start) : 0;
+    const chapterEnd = track?.chapter_end;
+    const rawEnd = Number(chapterEnd);
+    const end = chapterEnd != null && Number.isFinite(rawEnd) ? rawEnd : player.duration;
+    return {
+        player,
+        start,
+        end,
+        duration: Number.isFinite(end) ? Math.max(0, end - start) : 0,
+        position: Number.isFinite(player.currentTime) ? Math.max(0, player.currentTime - start) : 0,
+    };
+}
+
+function updateAndroidPlayback(force = false) {
+    if (!window.FreedifyAndroid?.updatePlaybackState) return;
+    const now = Date.now();
+    if (!force && now - lastAndroidPlaybackSync < 1000) return;
+    lastAndroidPlaybackSync = now;
+    const { player, duration, position } = getMediaChapterPosition();
+    window.FreedifyAndroid.updatePlaybackState(
+        !player.paused && !player.ended,
+        position,
+        duration,
+        player.playbackRate || 1,
+    );
+}
+
 // Register action handlers at page load — they persist across playbacks (per web.dev spec)
 if ('mediaSession' in navigator) {
     const actionHandlers = [
@@ -54,27 +93,29 @@ if ('mediaSession' in navigator) {
             emit('playPrevious');
         }],
         ['nexttrack', () => {
-            emit('playNext');
+            emit('playNext', true);
         }],
         ['seekbackward', (details) => {
-            const player = getActivePlayer();
-            player.currentTime = Math.max(player.currentTime - (details.seekOffset || 10), 0);
+            const { player, start } = getMediaChapterPosition();
+            player.currentTime = Math.max(player.currentTime - (details.seekOffset || 10), start);
         }],
         ['seekforward', (details) => {
-            const player = getActivePlayer();
-            player.currentTime = Math.min(player.currentTime + (details.seekOffset || 10), player.duration);
+            const { player, end } = getMediaChapterPosition();
+            player.currentTime = Math.min(player.currentTime + (details.seekOffset || 10), end);
         }],
         ['seekto', (details) => {
-            const player = getActivePlayer();
+            const { player, start, end } = getMediaChapterPosition();
+            const target = Math.min(start + details.seekTime, end);
             if (details.fastSeek && 'fastSeek' in player) {
-                player.fastSeek(details.seekTime);
+                player.fastSeek(target);
             } else {
-                player.currentTime = details.seekTime;
+                player.currentTime = target;
             }
         }],
         ['stop', () => {
-            getActivePlayer().pause();
-            getActivePlayer().currentTime = 0;
+            const { player, start } = getMediaChapterPosition();
+            player.pause();
+            player.currentTime = start;
             state.isPlaying = false;
             emit('updatePlayButton');
             navigator.mediaSession.playbackState = 'none';
@@ -93,12 +134,12 @@ if ('mediaSession' in navigator) {
 function updateMediaSessionPosition() {
     if ('mediaSession' in navigator && 'setPositionState' in navigator.mediaSession) {
         try {
-            const player = getActivePlayer();
-            if (player.duration && !isNaN(player.duration) && player.duration > 0) {
+            const { player, duration, position } = getMediaChapterPosition();
+            if (duration > 0) {
                 navigator.mediaSession.setPositionState({
-                    duration: player.duration,
+                    duration,
                     playbackRate: player.playbackRate,
-                    position: Math.min(player.currentTime, player.duration)
+                    position: Math.min(position, duration)
                 });
             }
         } catch (e) { /* Ignore errors */ }
@@ -106,6 +147,16 @@ function updateMediaSessionPosition() {
 }
 audioPlayer.addEventListener('timeupdate', updateMediaSessionPosition);
 audioPlayer2.addEventListener('timeupdate', updateMediaSessionPosition);
+audioPlayer.addEventListener('timeupdate', () => updateAndroidPlayback());
+audioPlayer2.addEventListener('timeupdate', () => updateAndroidPlayback());
+audioPlayer.addEventListener('play', () => updateAndroidPlayback(true));
+audioPlayer2.addEventListener('play', () => updateAndroidPlayback(true));
+audioPlayer.addEventListener('pause', () => updateAndroidPlayback(true));
+audioPlayer2.addEventListener('pause', () => updateAndroidPlayback(true));
+audioPlayer.addEventListener('loadedmetadata', () => updateAndroidPlayback(true));
+audioPlayer2.addEventListener('loadedmetadata', () => updateAndroidPlayback(true));
+audioPlayer.addEventListener('ratechange', () => updateAndroidPlayback(true));
+audioPlayer2.addEventListener('ratechange', () => updateAndroidPlayback(true));
 
 // ========== ANDROID BACKGROUND PLAYBACK RESILIENCE ==========
 
@@ -120,11 +171,6 @@ document.addEventListener('visibilitychange', () => {
         if (audio.crossfadeTimeout) {
             clearTimeout(audio.crossfadeTimeout);
             audio.crossfadeTimeout = null;
-        }
-        // If we should be playing but audio is paused, try to resume
-        const player = getActivePlayer();
-        if (state.isPlaying && player.paused && player.readyState >= 2) {
-            player.play().catch(() => {});
         }
     }
 });
@@ -2287,19 +2333,23 @@ function exportAllData() {
         };
 
         const json = JSON.stringify(backup, null, 2);
-        const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
-        const url = URL.createObjectURL(blob);
-
         const date = new Date().toISOString().slice(0, 10);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `freedify_backup_${date}.json`;
-        document.body.appendChild(a);
-        a.click();
-        setTimeout(() => {
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-        }, 100);
+        const filename = `freedify_backup_${date}.json`;
+        if (typeof window.FreedifyAndroid?.saveTextFile === 'function') {
+            window.FreedifyAndroid.saveTextFile(filename, 'application/json', json);
+        } else {
+            const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => {
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }, 100);
+        }
 
         const counts = [
             `${state.playlists.length} playlists`,

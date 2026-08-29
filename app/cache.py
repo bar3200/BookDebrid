@@ -19,9 +19,12 @@ import shutil
 # ---- Persisted settings (cap, library mode, library folder) ----
 # Kept beside the app (NOT inside CACHE_DIR, which cleanup would delete), alongside
 # freedify_settings.json.
-_CONFIG_FILE = Path(__file__).resolve().parent.parent / "freedify_cache_config.json"
+_DATA_DIR = Path(
+    os.environ.get("FREEDIFY_DATA_DIR", Path(__file__).resolve().parent.parent)
+)
+_CONFIG_FILE = _DATA_DIR / "freedify_cache_config.json"
 # ISRC -> relative library path index (so replays find organized files instantly).
-_LIBRARY_INDEX_FILE = Path(__file__).resolve().parent.parent / "freedify_library_index.json"
+_LIBRARY_INDEX_FILE = _DATA_DIR / "freedify_library_index.json"
 
 
 def _load_config() -> dict:

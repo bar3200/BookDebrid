@@ -407,12 +407,14 @@ export function addAudiobookFavorite(book) {
     state.audiobookFavorites.unshift({
         id: book.id,
         name: book.name || book.title,
-        artist: book.artists || book.artist || 'AudiobookBay',
+        artist: book.artists || book.artist || book.author || 'AudiobookBay',
         artwork: book.album_art || book.cover_image || book.artwork || '/static/icon.svg',
         folder_id: book.folder_id || null,
         premiumize_id: book.premiumize_id || null,
         debrid_provider: book.debrid_provider || null,
         debrid_id: book.debrid_id || null,
+        info_hash: book.info_hash || null,
+        description: book.description || '',
         addedAt: Date.now()
     });
     saveAudiobookFavorites();
@@ -496,6 +498,17 @@ export function getEpisodePosition(episodeId) {
 export function clearEpisodePosition(episodeId) {
     delete state.podcastResumePositions[episodeId];
     savePodcastResumePositions();
+}
+
+export function clearEpisodePositions(episodeIds) {
+    let changed = false;
+    for (const episodeId of episodeIds || []) {
+        if (episodeId in state.podcastResumePositions) {
+            delete state.podcastResumePositions[episodeId];
+            changed = true;
+        }
+    }
+    if (changed) savePodcastResumePositions();
 }
 
 // ========== PODCAST HISTORY ==========

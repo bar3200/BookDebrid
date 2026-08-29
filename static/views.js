@@ -3,7 +3,7 @@
 
 import { state } from './state.js';
 import { emit, on } from './event-bus.js';
-import { showToast, escapeHtml, formatTime, getTimeSince, parseDuration } from './utils.js';
+import { showToast, escapeHtml, formatTime, formatDuration, getTimeSince, parseDuration } from './utils.js';
 import { $, $$, resultsSection, resultsContainer, detailView, detailInfo, detailTracks, searchInput } from './dom.js';
 import { showLoading, hideLoading, showError } from './ui.js';
 import {
@@ -29,6 +29,7 @@ import {
     isEpisodePlayed,
     toggleEpisodePlayed,
     getEpisodePosition,
+    clearEpisodePositions,
     getAllUsedTags,
     getPodcastTags,
     setPodcastTags,
@@ -309,7 +310,7 @@ function renderMyPodcastsView() {
                                 <p class="track-artist">${escapeHtml(ep.artists)}${resumeText}</p>
                             </div>
                             <div class="track-actions">
-                                <span class="track-duration">${ep.duration || ''}</span>
+                                <span class="track-duration">${formatDuration(ep.duration, '')}</span>
                                 <button class="episode-played-btn ${played ? 'played' : ''}" data-episode-id="${ep.id}" title="${played ? 'Mark as unplayed' : 'Mark as played'}">
                                     ${played ? '✅' : '⬜'}
                                 </button>
@@ -476,7 +477,7 @@ function renderMyBooksView() {
                                 <p class="track-artist">${escapeHtml(ep.artists)}${resumeText}</p>
                             </div>
                             <div class="track-actions">
-                                <span class="track-duration">${ep.duration || ''}</span>
+                                <span class="track-duration">${formatDuration(ep.duration, '')}</span>
                             </div>
                         </div>
                     `;
@@ -611,7 +612,7 @@ function openBookInfoModal(book) {
             }
         }
     }
-    playBtn.textContent = resumeText;
+    playBtn.textContent = resumeChapterIndex >= 0 ? resumeText : 'Play from beginning';
 
     playBtn.onclick = () => {
         modal.classList.add('hidden');
@@ -626,6 +627,22 @@ function openBookInfoModal(book) {
         } else {
             openAudiobook(book.id);
         }
+    };
+
+    const startBtn = document.getElementById('book-info-start-btn');
+    startBtn.classList.toggle('hidden', !book.cachedTracks?.length || resumeChapterIndex < 0);
+    startBtn.onclick = () => {
+        if (!book.cachedTracks?.length) return;
+        clearEpisodePositions(book.cachedTracks.map(track => track.id));
+        modal.classList.add('hidden');
+        state.queue = book.cachedTracks.map(track => {
+            const freshTrack = {...track};
+            delete freshTrack._resumeAt;
+            return freshTrack;
+        });
+        state.currentIndex = 0;
+        emit('updateQueueUI');
+        emit('loadTrack', state.queue[0]);
     };
 
     // Chapters button
@@ -647,11 +664,17 @@ function openBookInfoModal(book) {
         chaptersBtn.style.display = 'none';
     }
 
+    const refreshBtn = document.getElementById('book-info-refresh-btn');
+    refreshBtn.textContent = book.cachedTracks?.length ? 'Refresh chapters' : 'Cache audiobook';
+    refreshBtn.onclick = () => refreshBookChapters(book);
+
     // Delete from Cloud button
     const deleteBtn = document.getElementById('book-info-delete-btn');
     // Show if we have IDs OR if we have cached tracks (we can pull IDs from them)
     if (book.debrid_id || book.folder_id || book.premiumize_id || (book.cachedTracks && book.cachedTracks.length > 0)) {
         deleteBtn.classList.remove('hidden');
+        const deleteProvider = book.debrid_provider || book.cachedTracks?.[0]?.debrid_provider || 'cloud';
+        deleteBtn.textContent = `Delete from ${getAudiobookProviderLabel(deleteProvider)}`;
         deleteBtn.onclick = async () => {
             const cachedTrack = book.cachedTracks && book.cachedTracks[0];
             const provider = book.debrid_provider || cachedTrack?.debrid_provider || 'premiumize';
@@ -717,6 +740,48 @@ function openBookInfoModal(book) {
     // Show modal
     modal.classList.remove('hidden');
 }
+
+async function refreshBookChapters(book) {
+    const modal = document.getElementById('book-info-modal');
+    const cachedTrack = book.cachedTracks?.[0];
+    const provider = book.debrid_provider || cachedTrack?.debrid_provider || getAudiobookProvider();
+    const itemId = book.debrid_id || cachedTrack?.debrid_id || book.folder_id || book.premiumize_id;
+    modal.classList.add('hidden');
+
+    if (itemId) {
+        await loadAudiobookFolder(itemId, {
+            id: book.id,
+            title: book.name,
+            author: book.artist,
+            cover_image: book.artwork,
+            description: book.description,
+        }, provider);
+        return;
+    }
+
+    // Old favorites may predate storage of the exact cloud ID. Re-fetch the
+    // selected ABB entry and upload its exact info-hash; AllDebrid deduplicates
+    // an already-cached magnet and returns the authoritative ID.
+    showToast('Re-linking the exact audiobook torrent…');
+    await loadAudiobookDebridConfig();
+    const providerSelect = $('#audiobook-provider-select');
+    if (providerSelect && audiobookDebridConfig.providers.includes(provider)) {
+        providerSelect.value = provider;
+        localStorage.setItem('freedify_audiobook_debrid_provider', provider);
+    }
+    await openAudiobook(book.id);
+    if (currentAudiobookDetails?.magnet_link) {
+        await startAudiobookDownload(currentAudiobookDetails.magnet_link);
+    }
+}
+
+on('openAudiobookFromPlayer', track => {
+    const book = state.audiobookFavorites.find(candidate =>
+        candidate.id === track?.audiobook_id || candidate.name === track?.album
+    );
+    if (book) openBookInfoModal(book);
+    else emit('renderMyBooksView');
+});
 
 async function fetchGoodreadsData(title, author) {
     const container = document.getElementById('book-info-goodreads');
@@ -1222,7 +1287,7 @@ function showAlbumModal(album) {
             <div class="track-row-actions">
                 <button class="star-btn ${isStarred ? 'starred' : ''}" data-track-id="${track.id}" data-index="${i}" title="${isStarred ? 'Remove from Library' : 'Add to Library'}">${isStarred ? '★' : '☆'}</button>
                 <button class="album-track-playlist" title="Add to Playlist" data-index="${i}">♡</button>
-                <span class="album-track-duration">${typeof track.duration === 'number' ? formatTime(track.duration) : (track.duration || '--:--')}</span>
+                <span class="album-track-duration">${formatDuration(track.duration)}</span>
                 <button title="Add to Queue" data-action="queue" data-index="${i}">+</button>
                 <button title="Download" data-action="download" data-index="${i}">⬇</button>
             </div>
@@ -1470,7 +1535,7 @@ function showDetailView(item, tracks) {
 
             <div class="track-actions">
                 ${renderDJBadgeForTrack(t)}
-                <span class="track-duration">${t.duration}</span>
+                <span class="track-duration">${formatDuration(t.duration)}</span>
                 <button class="star-btn ${isStarred ? 'starred' : ''}" data-track-id="${t.id}" title="${isStarred ? 'Remove from Library' : 'Add to Library'}">${isStarred ? '★' : '☆'}</button>
                 <button class="playlist-btn" title="Add to Playlist" onclick="event.stopPropagation(); if(typeof window.openAddToPlaylistModal === 'function') window.openAddToPlaylistModal(JSON.parse(decodeURIComponent('${encodeURIComponent(JSON.stringify(t)).replace(/'/g, "%27")}')))">♡</button>
                 <button class="download-btn" title="Download" onclick="event.stopPropagation(); openDownloadModal('${encodeURIComponent(JSON.stringify(t)).replace(/'/g, "%27")}')">
@@ -1521,7 +1586,7 @@ function showPodcastModal(trackJson) {
         podcastModalArt.src = track.album_art || '/static/icon.svg';
         podcastModalTitle.textContent = track.name;
         podcastModalDate.textContent = track.datePublished || '';
-        podcastModalDuration.textContent = `Duration: ${track.duration}`;
+        podcastModalDuration.textContent = `Duration: ${formatDuration(track.duration)}`;
 
         // Strip HTML tags from description and decode entities
         const tempDiv = document.createElement('div');
@@ -1906,6 +1971,10 @@ function generateCSV(tracks) {
 }
 
 function triggerDownload(content, filename, type) {
+    if (typeof window.FreedifyAndroid?.saveTextFile === 'function') {
+        window.FreedifyAndroid.saveTextFile(filename, type, content);
+        return;
+    }
     const blob = new Blob([content], { type: type });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -1998,7 +2067,11 @@ const audiobookModal = $('#audiobook-modal');
 const audiobookCloseBtn = $('#audiobook-modal-close');
 let currentAudiobookDetails = null;
 let audiobookPollInterval = null;
+let audiobookPollFailures = 0;
 let audiobookDebridConfig = null;
+const AUDIOBOOK_POLL_INTERVAL_MS = 5000;
+const AUDIOBOOK_POLL_TIMEOUT_MS = 40000;
+const AUDIOBOOK_MAX_POLL_FAILURES = 5;
 
 async function loadAudiobookDebridConfig() {
     if (audiobookDebridConfig) return audiobookDebridConfig;
@@ -2034,6 +2107,22 @@ function makeDebridTrackIsrc(file, provider) {
     return `${prefix}${btoa(value).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')}`;
 }
 
+function expandEmbeddedM4bChapters(audioFiles) {
+    return audioFiles.flatMap(file => {
+        if (!Array.isArray(file.chapters) || file.chapters.length === 0) return [file];
+        return file.chapters.map((chapter, index) => ({
+            ...file,
+            name: chapter.title || `Chapter ${index + 1}`,
+            path: `${file.path || file.name}#chapter-${index + 1}`,
+            chapter_start: Number(chapter.start) || 0,
+            chapter_end: chapter.end != null && Number.isFinite(Number(chapter.end)) ? Number(chapter.end) : null,
+            chapter_duration: chapter.duration != null && Number.isFinite(Number(chapter.duration)) ? Number(chapter.duration) : null,
+            embedded_chapter: true,
+            chapters: undefined,
+        }));
+    });
+}
+
 function initAudiobooks() {
     loadAudiobookDebridConfig().catch(e => console.error('Debrid config error', e));
     const providerSelect = $('#audiobook-provider-select');
@@ -2044,7 +2133,6 @@ function initAudiobooks() {
                 const btn = $('#audiobook-download-btn');
                 btn.textContent = `☁️ Download to ${getAudiobookProviderLabel()}`;
                 btn.onclick = () => startAudiobookDownload(currentAudiobookDetails.magnet_link);
-                checkExistingAudiobook(currentAudiobookDetails.title);
             }
         });
     }
@@ -2052,11 +2140,12 @@ function initAudiobooks() {
         audiobookCloseBtn.addEventListener('click', () => {
             audiobookModal.classList.add('hidden');
             if (audiobookPollInterval) {
-                clearInterval(audiobookPollInterval);
+                clearTimeout(audiobookPollInterval);
                 audiobookPollInterval = null;
             }
         });
     }
+
 }
 
 async function openAudiobook(id) {
@@ -2111,9 +2200,6 @@ async function openAudiobook(id) {
         $('#audiobook-progress-percent').textContent = '0%';
         $('#audiobook-progress-fill').style.width = '0%';
 
-        // Check the selected cloud for an existing ready copy (optimistic check)
-        checkExistingAudiobook(details.title);
-
         btn.onclick = () => startAudiobookDownload(details.magnet_link);
 
         audiobookModal.classList.remove('hidden');
@@ -2121,31 +2207,6 @@ async function openAudiobook(id) {
         hideLoading();
         console.error(e);
         showError(e.message);
-    }
-}
-
-async function checkExistingAudiobook(title) {
-    try {
-        const provider = getAudiobookProvider();
-        const providerLabel = getAudiobookProviderLabel(provider);
-        // Torrents often have weird names, so we might not find it, which is fine
-        const { folder, audioFiles } = await searchDebridForAudiobook(title, provider);
-
-        if (folder || audioFiles.length > 0) {
-            if (folder) {
-                const btn = $('#audiobook-download-btn');
-                btn.textContent = `▶ Play from ${providerLabel} Cache`;
-                btn.onclick = () => loadAudiobookFolder(folder.id, currentAudiobookDetails, provider);
-                showToast(`Found in ${providerLabel} cache!`);
-            } else if (audioFiles.length > 0) {
-                const btn = $('#audiobook-download-btn');
-                btn.textContent = `▶ Play from ${providerLabel} Cache`;
-                btn.onclick = () => processDirectAudioFiles(audioFiles, currentAudiobookDetails, provider);
-                showToast(`Found in ${providerLabel} cache!`);
-            }
-        }
-    } catch (e) {
-        console.error("Cache check failed", e);
     }
 }
 
@@ -2192,22 +2253,35 @@ async function searchDebridForAudiobook(title, provider = getAudiobookProvider()
 }
 
 function processDirectAudioFiles(audioFiles, details, provider = getAudiobookProvider(), itemId = null) {
-    audioFiles.sort((a, b) => a.name.localeCompare(b.name));
+    audioFiles = expandEmbeddedM4bChapters(audioFiles);
+    audioFiles.sort((a, b) => (a.path || a.name).localeCompare(
+        b.path || b.name,
+        undefined,
+        { numeric: true, sensitivity: 'base' },
+    ));
     audiobookModal.classList.add('hidden');
 
     const mappedTracks = audioFiles.map((file, index) => {
-        const stableId = `ab_${details.title}_${file.name}`.replace(/[^a-zA-Z0-9_]/g, '_');
+        const chapterSource = file.path || file.name;
+        const chapterParts = chapterSource.replace(/#chapter-\d+$/, '').replace(/\.[^/.]+$/, '').split('/').filter(Boolean);
+        const chapterName = file.embedded_chapter
+            ? file.name
+            : chapterParts.slice(-2).join(' · ');
+        const stableId = `ab_${details.title}_${chapterSource}`.replace(/[^a-zA-Z0-9_]/g, '_');
 
         return {
             id: stableId,
             isrc: makeDebridTrackIsrc(file, provider),
-            name: file.name.replace(/\.[^/.]+$/, ""),
+            name: chapterName || `Chapter ${index + 1}`,
             artists: details.author || 'Unknown Author',
             album: details.title,
             album_art: details.cover_image || '/static/icon.svg',
-            duration: '0:00',
+            duration: file.chapter_duration ?? '0:00',
             source: 'audiobook',
             track_number: index + 1,
+            audiobook_id: details.id,
+            chapter_start: file.embedded_chapter ? file.chapter_start : undefined,
+            chapter_end: file.embedded_chapter ? (file.chapter_end ?? undefined) : undefined,
             debrid_provider: provider,
             debrid_id: itemId
         };
@@ -2231,6 +2305,9 @@ function processDirectAudioFiles(audioFiles, details, provider = getAudiobookPro
         state.audiobookFavorites[favIdx].cachedAt = Date.now();
         state.audiobookFavorites[favIdx].debrid_provider = provider;
         state.audiobookFavorites[favIdx].debrid_id = itemId;
+        if (provider === 'alldebrid') {
+            state.audiobookFavorites[favIdx].chapter_metadata_checked_at = Date.now();
+        }
         if (details.description) {
             state.audiobookFavorites[favIdx].description = details.description;
         }
@@ -2243,54 +2320,90 @@ function processDirectAudioFiles(audioFiles, details, provider = getAudiobookPro
 async function startAudiobookDownload(magnetLink) {
     const btn = $('#audiobook-download-btn');
     const provider = getAudiobookProvider();
+    const providerLabel = getAudiobookProviderLabel(provider);
+    if (!magnetLink) {
+        showError('This audiobook did not include a valid magnet link.');
+        return;
+    }
+
     btn.disabled = true;
     btn.textContent = 'Starting Transfer...';
     $('#audiobook-progress-container').classList.remove('hidden');
+    $('#audiobook-progress-status').textContent = `Sending magnet to ${providerLabel}...`;
+    $('#audiobook-progress-percent').textContent = '0%';
+    $('#audiobook-progress-fill').style.width = '0%';
+
+    const controller = new AbortController();
+    const requestTimeout = setTimeout(() => controller.abort(), 40000);
 
     try {
         const response = await fetch(`/api/debrid/${provider}/transfer`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ magnet_link: magnetLink })
+            body: JSON.stringify({ magnet_link: magnetLink }),
+            signal: controller.signal
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.detail || 'Failed to start transfer');
 
         if (data.status === 'success') {
-            pollAudiobookTransfer(data.id || data.transfer_id, provider); // The id depends on the exact API response
+            const transferId = data.id || data.transfer_id;
+            if (!transferId) throw new Error(`${providerLabel} did not return a transfer ID`);
+
+            if (data.ready) {
+                btn.textContent = 'Loading chapters...';
+                $('#audiobook-progress-status').textContent = 'Already cached — loading chapters...';
+                $('#audiobook-progress-percent').textContent = '100%';
+                $('#audiobook-progress-fill').style.width = '100%';
+                await loadAudiobookFolder(transferId, currentAudiobookDetails, provider);
+            } else {
+                btn.textContent = `Downloading with ${providerLabel}...`;
+                $('#audiobook-progress-status').textContent = 'Transfer started — checking progress...';
+                pollAudiobookTransfer(transferId, provider);
+            }
         } else {
             throw new Error(data.detail || data.message || 'Failed to start transfer');
         }
     } catch (e) {
         btn.disabled = false;
-        btn.textContent = `☁️ Download to ${getAudiobookProviderLabel(provider)}`;
-        showError(e.message);
+        btn.textContent = `☁️ Download to ${providerLabel}`;
+        $('#audiobook-progress-status').textContent = 'Transfer could not be started';
+        showError(e.name === 'AbortError' ? `${providerLabel} did not respond in time. Please try again.` : e.message);
+    } finally {
+        clearTimeout(requestTimeout);
     }
 }
 
 async function pollAudiobookTransfer(transferId, provider = getAudiobookProvider()) {
-    if (audiobookPollInterval) clearInterval(audiobookPollInterval);
+    if (audiobookPollInterval) clearTimeout(audiobookPollInterval);
+    audiobookPollFailures = 0;
+    const providerLabel = getAudiobookProviderLabel(provider);
+    $('#audiobook-download-btn').disabled = true;
+    $('#audiobook-download-btn').textContent = `Downloading with ${providerLabel}...`;
 
-    // Fallback if transferId is missing from create transfer response
     const fetchStatus = async () => {
+        audiobookPollInterval = null;
+        const controller = new AbortController();
+        const requestTimeout = setTimeout(() => controller.abort(), AUDIOBOOK_POLL_TIMEOUT_MS);
         try {
-            const res = await fetch(`/api/debrid/${provider}/transfer/${transferId || ''}`);
+            const res = await fetch(
+                `/api/debrid/${provider}/transfer/${encodeURIComponent(transferId)}`,
+                { signal: controller.signal },
+            );
             const data = await res.json();
             if (!res.ok) throw new Error(data.detail || 'Transfer status request failed');
+            audiobookPollFailures = 0;
 
             let transfer = null;
-            if (transferId && data.transfer && !Array.isArray(data.transfer)) {
+            if (data.transfer && !Array.isArray(data.transfer)) {
                 transfer = data.transfer;
             } else if (data.transfer && Array.isArray(data.transfer)) {
-                // Find highest progress if we don't know the ID
-                transfer = data.transfer.filter(t => t.name && (t.name.includes(currentAudiobookDetails.title.split(' ')[0]) || t.message !== 'finished')).pop();
+                transfer = data.transfer.find(t => String(t.id) === String(transferId));
             }
 
             if (!transfer) {
                 // If transfer disappeared, it might be finished
-                clearInterval(audiobookPollInterval);
-                audiobookPollInterval = null;
-                // Now try to find the folder it created
+                $('#audiobook-progress-status').textContent = 'Transfer no longer active — locating chapters...';
                 autoFindFinishedFolder(provider, transferId);
                 return;
             }
@@ -2303,17 +2416,13 @@ async function pollAudiobookTransfer(transferId, provider = getAudiobookProvider
             $('#audiobook-progress-status').textContent = statusStr;
 
             if (transfer.status === 'error') {
-                clearInterval(audiobookPollInterval);
-                audiobookPollInterval = null;
                 $('#audiobook-download-btn').disabled = false;
-                $('#audiobook-download-btn').textContent = `☁️ Download to ${getAudiobookProviderLabel(provider)}`;
+                $('#audiobook-download-btn').textContent = `☁️ Download to ${providerLabel}`;
                 showError(statusStr);
                 return;
             }
 
             if (transfer.status === 'finished' || progress >= 100) {
-                clearInterval(audiobookPollInterval);
-                audiobookPollInterval = null;
                 $('#audiobook-progress-status').textContent = 'Complete! Loading tracks...';
                 $('#audiobook-download-btn').textContent = '▶ Play';
 
@@ -2323,19 +2432,46 @@ async function pollAudiobookTransfer(transferId, provider = getAudiobookProvider
                 } else {
                     autoFindFinishedFolder(provider, transferId);
                 }
+                return;
             }
 
         } catch (e) {
             console.error('Polling error', e);
+            audiobookPollFailures += 1;
+            if (audiobookPollFailures >= AUDIOBOOK_MAX_POLL_FAILURES) {
+                $('#audiobook-progress-status').textContent = `Could not check ${providerLabel} progress`;
+                $('#audiobook-progress-percent').textContent = '';
+                $('#audiobook-download-btn').disabled = false;
+                $('#audiobook-download-btn').textContent = 'Retry progress check';
+                $('#audiobook-download-btn').onclick = () => pollAudiobookTransfer(transferId, provider);
+                const message = e.name === 'AbortError'
+                    ? `${providerLabel} status request timed out`
+                    : (e.message || 'Transfer status request failed');
+                showError(message);
+                return;
+            }
+            $('#audiobook-progress-status').textContent = `Connection interrupted — retrying (${audiobookPollFailures}/${AUDIOBOOK_MAX_POLL_FAILURES})...`;
+        } finally {
+            clearTimeout(requestTimeout);
+        }
+
+        if (!audiobookModal.classList.contains('hidden')) {
+            const retryDelay = audiobookPollFailures > 0
+                ? Math.min(15000, AUDIOBOOK_POLL_INTERVAL_MS * audiobookPollFailures)
+                : AUDIOBOOK_POLL_INTERVAL_MS;
+            audiobookPollInterval = setTimeout(fetchStatus, retryDelay);
         }
     };
 
-    audiobookPollInterval = setInterval(fetchStatus, 3000);
     fetchStatus(); // immediate run
 }
 
 async function autoFindFinishedFolder(provider = getAudiobookProvider(), transferId = null) {
     try {
+        if (provider === 'alldebrid' && transferId) {
+            await loadAudiobookFolder(transferId, currentAudiobookDetails, provider);
+            return;
+        }
         const { folder, audioFiles } = await searchDebridForAudiobook(currentAudiobookDetails.title, provider);
 
         if (folder) {
@@ -2364,6 +2500,12 @@ async function loadAudiobookFolder(folderId, audiobookDetails, provider = getAud
         if (!response.ok) throw new Error(data.detail || 'Failed to load audiobook files');
         hideLoading();
 
+        if (data.chapter_scan?.count > 0) {
+            showToast(`Found ${data.chapter_scan.count} embedded chapters`);
+        } else if (data.chapter_scan?.attempted) {
+            showToast(data.chapter_scan.error || 'This M4B has no embedded chapter table');
+        }
+
         let audioFiles = data.audio_files || [];
 
         // If empty, maybe it's nested in a subfolder. Let's recursively check (max 1 deep for simplicity)
@@ -2376,63 +2518,22 @@ async function loadAudiobookFolder(folderId, audiobookDetails, provider = getAud
         }
 
         if (audioFiles.length === 0) {
+            const btn = $('#audiobook-download-btn');
+            btn.disabled = false;
+            btn.textContent = `☁️ Download to ${getAudiobookProviderLabel(provider)}`;
             showError('No audio files found in the downloaded folder.');
             return;
         }
 
-        // Close modal and map tracks for showDetailView
-        audiobookModal.classList.add('hidden');
-
-        const mappedTracks = audioFiles.map((file, index) => {
-            // Use stream_link if available, fallback to directlink for actual media access
-            // Use a STABLE ID based on filename + audiobook title (stream URLs expire and change)
-            const stableId = `ab_${audiobookDetails.title}_${file.name}`.replace(/[^a-zA-Z0-9_]/g, '_');
-            return {
-                id: stableId,
-                isrc: makeDebridTrackIsrc(file, provider),
-                name: file.name.replace(/\.[^/.]+$/, ""), // Remove extension
-                artists: audiobookDetails.title,
-                album: audiobookDetails.title,
-                album_art: audiobookDetails.cover_image || '/static/icon.svg',
-                duration: '0:00', // We don't have duration upfront
-                source: 'audiobook', // Mark as audiobook so it uses the podcast resume logic!
-                track_number: index + 1,
-                debrid_provider: provider,
-                debrid_id: folderId
-            };
-        });
-
-        const albumData = {
-            id: `ab_${folderId}`,
-            name: audiobookDetails.title,
-            artists: 'Audiobook',
-            image: audiobookDetails.cover_image || '/static/icon.svg',
-            is_playlist: false
-        };
-
-        showDetailView(albumData, mappedTracks);
-
-        // Auto-save and cache tracks so later plays don't need another cloud request.
-        addAudiobookFavorite(audiobookDetails);
-        const favIdx = state.audiobookFavorites.findIndex(b =>
-            b.name === audiobookDetails.title || b.id === audiobookDetails.id
-        );
-        if (favIdx !== -1) {
-            state.audiobookFavorites[favIdx].cachedTracks = mappedTracks;
-            state.audiobookFavorites[favIdx].cachedAt = Date.now();
-            state.audiobookFavorites[favIdx].debrid_provider = provider;
-            state.audiobookFavorites[favIdx].debrid_id = folderId;
-            // Cache the description from AudiobookBay for the book info modal
-            if (audiobookDetails.description) {
-                state.audiobookFavorites[favIdx].description = audiobookDetails.description;
-            }
-            saveAudiobookFavorites();
-        }
+        processDirectAudioFiles(audioFiles, audiobookDetails, provider, folderId);
 
     } catch (e) {
         hideLoading();
         console.error(e);
-        showError('Failed to load audiobook folder');
+        const btn = $('#audiobook-download-btn');
+        btn.disabled = false;
+        btn.textContent = `☁️ Download to ${getAudiobookProviderLabel(provider)}`;
+        showError(e.message || 'Failed to load audiobook folder');
     }
 }
 

@@ -1,17 +1,14 @@
-from bs4 import BeautifulSoup
-import urllib.parse
-from fastapi import HTTPException
-import re
 import asyncio
+import html
 import logging
+import os
+import re
 import shutil
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from webdriver_manager.chrome import ChromeDriverManager
+import urllib.parse
+
+from bs4 import BeautifulSoup
+from fastapi import HTTPException
+import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -20,8 +17,29 @@ ABB_BASE_URL = "https://audiobookbay.lu"
 MAX_RETRIES = 2
 
 
+def _split_title_author(raw_title: str) -> tuple[str, str | None]:
+    """Extract ABB's common ``Book title - Author`` suffix conservatively."""
+    parts = [part.strip() for part in raw_title.rsplit(" - ", 1)]
+    if len(parts) != 2:
+        return raw_title.strip(), None
+    title, candidate = parts
+    words = candidate.split()
+    if not title or not 1 <= len(words) <= 8 or len(candidate) > 80:
+        return raw_title.strip(), None
+    if any(marker in candidate.lower() for marker in ("audiobook", "book ", "books ", "series")):
+        return raw_title.strip(), None
+    return title, candidate
+
+
 def _create_driver():
     """Create a memory-optimized headless Chrome driver for constrained environments (Render, Docker)."""
+    # Keep desktop browser dependencies out of the Android APK. They are loaded
+    # only when the normal server path actually uses Selenium.
+    from selenium import webdriver
+    from selenium.webdriver.chrome.options import Options
+    from selenium.webdriver.chrome.service import Service
+    from webdriver_manager.chrome import ChromeDriverManager
+
     options = Options()
     options.add_argument('--headless=new')
     options.add_argument('--no-sandbox')
@@ -70,6 +88,10 @@ def _create_driver():
 
 def _fetch_page_with_retry(url: str, wait_selector: str | None = None) -> str:
     """Fetch a page with Selenium, retrying on timeout. Returns page source HTML."""
+    from selenium.webdriver.common.by import By
+    from selenium.webdriver.support.ui import WebDriverWait
+    from selenium.webdriver.support import expected_conditions as EC
+
     last_error = None
     for attempt in range(1, MAX_RETRIES + 1):
         driver = None
@@ -102,6 +124,50 @@ def _fetch_page_with_retry(url: str, wait_selector: str | None = None) -> str:
     raise last_error
 
 
+def _fetch_page_http(url: str) -> str:
+    """Android-compatible fallback where desktop ChromeDriver is unavailable."""
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+        ),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Upgrade-Insecure-Requests": "1",
+    }
+    with httpx.Client(headers=headers, follow_redirects=True, timeout=45.0) as client:
+        # Establish any cookies which AudiobookBay sets on its home page first.
+        if url != ABB_BASE_URL:
+            home_response = client.get(ABB_BASE_URL)
+            home_response.raise_for_status()
+        response = client.get(url, headers={"Referer": f"{ABB_BASE_URL}/"})
+        response.raise_for_status()
+        return response.text
+
+
+def _android_search_urls(query: str, page: int) -> list[str]:
+    """Return ABB search routes in reliability order for the embedded client."""
+    encoded = urllib.parse.quote_plus(query)
+    paged_url = f"{ABB_BASE_URL}/page/{max(1, page)}/?s={encoded}"
+    if page > 1:
+        return [paged_url]
+    # ABB sometimes treats a fresh request to /?s= as its homepage. The
+    # explicit page/1 route is used first, while the canonical route remains a
+    # fallback for installations where WordPress redirects page 1.
+    return [paged_url, f"{ABB_BASE_URL}/?s={encoded}"]
+
+
+def _is_search_results_page(html_content: str, query: str) -> bool:
+    """Distinguish a real ABB search page from its unrelated homepage."""
+    heading_match = re.search(r"<h1\b[^>]*>(.*?)</h1>", html_content, re.I | re.S)
+    if not heading_match:
+        return False
+    heading_text = html.unescape(re.sub(r"<[^>]+>", " ", heading_match.group(1)))
+    heading_tokens = set(re.findall(r"[a-z0-9]+", heading_text.lower()))
+    query_tokens = set(re.findall(r"[a-z0-9]+", query.lower()))
+    return bool(query_tokens) and query_tokens.issubset(heading_tokens)
+
+
 def extract_slug_from_url(url: str):
     """
     Extract the audiobook slug from a full AudiobookBay URL.
@@ -128,7 +194,39 @@ async def search_audiobooks(query: str, page: int = 1):
     """
     loop = asyncio.get_event_loop()
 
+    if os.environ.get("ANDROID_EMBEDDED") == "1":
+        last_error = None
+        for search_url in _android_search_urls(query, page):
+            try:
+                html_content = await loop.run_in_executor(None, _fetch_page_http, search_url)
+            except Exception as e:
+                last_error = e
+                continue
+
+            if not _is_search_results_page(html_content, query):
+                continue
+
+            return _rank_search_results(
+                _parse_search_results(html_content),
+                query,
+                retain_unmatched=True,
+            )
+
+        detail = f" Details: {last_error}" if last_error else ""
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "AudiobookBay returned its homepage instead of search results. "
+                "Please retry, or paste a direct AudiobookBay book URL."
+                f"{detail}"
+            ),
+        )
+
     def do_search(search_query: str, target_page: int):
+        from selenium.webdriver.common.by import By
+        from selenium.webdriver.support.ui import WebDriverWait
+        from selenium.webdriver.support import expected_conditions as EC
+
         # ABB ignores the ?s= URL param entirely, so we MUST use form submission
         # for ALL pages. For page > 1, we submit the form first, then navigate
         # to the pagination URL within the same browser session (preserves cookies).
@@ -190,6 +288,44 @@ async def search_audiobooks(query: str, page: int = 1):
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Failed to fetch from AudiobookBay via Selenium: {str(e)}")
 
+    return _rank_search_results(_parse_search_results(html_content), query)
+
+
+def _rank_search_results(
+    results: list[dict],
+    query: str,
+    retain_unmatched: bool = False,
+) -> list[dict]:
+    """Discard unrelated fallback posts and put the closest title matches first."""
+    normalized_query = " ".join(re.findall(r"[a-z0-9]+", query.lower()))
+    tokens = [token for token in normalized_query.split() if len(token) > 1]
+    if not tokens:
+        return results
+
+    ranked = []
+    for index, item in enumerate(results):
+        title = " ".join(re.findall(r"[a-z0-9]+", item.get("title", "").lower()))
+        description = " ".join(
+            re.findall(r"[a-z0-9]+", item.get("description", "").lower())
+        )
+        author = " ".join(re.findall(r"[a-z0-9]+", (item.get("author") or "").lower()))
+        title_hits = sum(token in title.split() for token in tokens)
+        author_hits = sum(token in author.split() for token in tokens)
+        text_hits = sum(token in f"{title} {author} {description}".split() for token in tokens)
+        if text_hits == 0 and not retain_unmatched:
+            continue
+        score = text_hits * 10 + title_hits * 20 + author_hits * 20
+        if normalized_query and (normalized_query in title or normalized_query in author):
+            score += 100
+        if title_hits == len(tokens) or author_hits == len(tokens):
+            score += 50
+        ranked.append((score, index, item))
+
+    ranked.sort(key=lambda entry: (-entry[0], entry[1]))
+    return [item for _, _, item in ranked]
+
+
+def _parse_search_results(html_content: str):
     soup = BeautifulSoup(html_content, 'html.parser')
     results = []
 
@@ -204,7 +340,8 @@ async def search_audiobooks(query: str, page: int = 1):
         if not title_elem:
             continue
 
-        title = title_elem.text.strip()
+        raw_title = title_elem.text.strip()
+        title, author = _split_title_author(raw_title)
         link = title_elem['href']
 
         # Extract ID or slug from link (e.g. /audio-books/some-book-name/)
@@ -224,6 +361,7 @@ async def search_audiobooks(query: str, page: int = 1):
         results.append({
             "id": slug,
             "title": title,
+            "author": author,
             "url": link,
             "cover_image": cover_image,
             "description": desc_text[:200] + "..." if len(desc_text) > 200 else desc_text,
@@ -244,18 +382,21 @@ async def get_audiobook_details(slug: str):
     loop = asyncio.get_event_loop()
 
     def do_fetch(target_url):
+        if os.environ.get("ANDROID_EMBEDDED") == "1":
+            return _fetch_page_http(target_url)
         return _fetch_page_with_retry(target_url, wait_selector='div.postContent')
 
     try:
         html_content = await loop.run_in_executor(None, do_fetch, url)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Failed to fetch details from AudiobookBay via Selenium: {str(e)}")
+        raise HTTPException(status_code=502, detail=f"Failed to fetch details from AudiobookBay: {str(e)}")
 
     soup = BeautifulSoup(html_content, 'html.parser')
 
     # Title
     title_elem = soup.find('div', class_='postTitle')
-    title = title_elem.find('h1').text.strip() if title_elem and title_elem.find('h1') else "Unknown Title"
+    raw_title = title_elem.find('h1').text.strip() if title_elem and title_elem.find('h1') else "Unknown Title"
+    title, author = _split_title_author(raw_title)
 
     # Cover
     cover_elem = soup.find('div', class_='postContent')
@@ -303,6 +444,7 @@ async def get_audiobook_details(slug: str):
     return {
         "id": slug,
         "title": title,
+        "author": author,
         "cover_image": cover_image,
         "description": description,
         "info_hash": info_hash,

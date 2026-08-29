@@ -21,6 +21,7 @@ import {
 import { audio, getActivePlayer, performGaplessSwitch, preloadNextTrack } from './audio-engine.js';
 import {
     playTrack, loadTrack, togglePlay, playNext, playPrevious,
+    handleNativeMediaCommand,
     updateQueueUI, updatePlayerUI, updatePlayButton, updateVolume,
     removeFromQueue, loadQueueFromStorage, setPlaybackDeps,
     updateFormatBadge, toggleFullScreen, updateFullscreenUI,
@@ -337,8 +338,75 @@ window.renderMyBooksView = renderMyBooksView;
 window.fetchAudioFeaturesForTracks = fetchAudioFeaturesForTracks;
 window.renderDJBadgeForTrack = renderDJBadgeForTrack;
 
+window.FreedifyAndroidMedia = {
+    handleCommand: (command, value = 0) => handleNativeMediaCommand(command, Number(value) || 0),
+};
+
+window.FreedifyAndroidNavigation = {
+    goBack: () => {
+        const transientPanels = ['player-more-menu', 'search-more-menu', 'eq-panel'];
+        for (const panelId of transientPanels) {
+            const panel = document.getElementById(panelId);
+            if (panel && !panel.classList.contains('hidden')) {
+                panel.classList.add('hidden');
+                return true;
+            }
+        }
+        const closeTargets = [
+            ['visualizer-overlay', 'visualizer-close'],
+            ['fullscreen-player', 'fs-close-btn'],
+            ['book-info-modal', 'book-info-close'],
+            ['audiobook-modal', 'audiobook-modal-close'],
+            ['album-modal', 'album-modal-close'],
+            ['podcast-modal', 'podcast-modal-close'],
+            ['settings-modal', 'settings-close'],
+            ['ai-modal', 'ai-modal-close'],
+            ['lyrics-modal', 'lyrics-modal-close'],
+            ['concerts-modal', 'concerts-modal-close'],
+            ['dj-setlist-modal', 'dj-modal-close'],
+            ['playlist-modal', 'playlist-modal-close'],
+            ['artist-bio-modal', 'artist-bio-close'],
+            ['setlist-modal', 'setlist-close-btn'],
+            ['drive-sync-modal', 'drive-modal-close-top'],
+            ['concert-modal', 'concert-modal-close'],
+            ['download-modal', 'download-cancel-btn'],
+        ];
+        for (const [containerId, closeId] of closeTargets) {
+            const container = document.getElementById(containerId);
+            if (container && !container.classList.contains('hidden')) {
+                document.getElementById(closeId)?.click();
+                return true;
+            }
+        }
+        // Keep Android Back safe for any newer modal which has not yet been
+        // added to the explicit list. Prefer its close/cancel control so the
+        // component can run cleanup; hiding is the final fallback.
+        const visibleModal = document.querySelector(
+            '.modal:not(.hidden), .album-modal:not(.hidden), .book-info-modal:not(.hidden), ' +
+            '.podcast-modal:not(.hidden), .settings-modal:not(.hidden), .ai-modal:not(.hidden)'
+        );
+        if (visibleModal) {
+            const closeControl = visibleModal.querySelector(
+                '[id$="-close"], [id$="-close-btn"], [id$="-cancel-btn"], .modal-close, .album-modal-close'
+            );
+            if (closeControl) closeControl.click();
+            else visibleModal.classList.add('hidden');
+            return true;
+        }
+        if (queueSection && !queueSection.classList.contains('hidden')) {
+            document.getElementById('queue-close')?.click();
+            return true;
+        }
+        if (detailView && !detailView.classList.contains('hidden')) {
+            backBtn?.click();
+            return true;
+        }
+        return false;
+    },
+};
+
 // ========== SERVICE WORKER ==========
-if ('serviceWorker' in navigator) {
+if ('serviceWorker' in navigator && !document.documentElement.classList.contains('android-app')) {
     navigator.serviceWorker.register('/sw.js').catch(console.error);
 }
 
@@ -350,8 +418,10 @@ window.addEventListener('beforeunload', () => {
             const player = document.getElementById('audio-player');
             const player2 = document.getElementById('audio-player-2');
             const activeP = (player && !player.paused) ? player : (player2 && !player2.paused) ? player2 : player;
-            if (activeP && activeP.currentTime > 5) {
-                saveEpisodePosition(currentTrack.id, activeP.currentTime);
+            const chapterStart = Number.isFinite(Number(currentTrack.chapter_start)) ? Number(currentTrack.chapter_start) : 0;
+            const relativePosition = activeP ? Math.max(0, activeP.currentTime - chapterStart) : 0;
+            if (relativePosition > 5) {
+                saveEpisodePosition(currentTrack.id, relativePosition);
             }
         }
     } catch (e) { /* ignore errors during unload */ }
@@ -359,6 +429,15 @@ window.addEventListener('beforeunload', () => {
 
 // ========== INIT ==========
 showEmptyState();
+
+if (document.documentElement.classList.contains('android-app')) {
+    state.searchType = 'audiobook';
+    document.querySelectorAll('.type-btn, .type-btn-menu').forEach((button) => {
+        button.classList.toggle('active', button.dataset.type === 'audiobook');
+    });
+    searchInput.placeholder = 'Search audiobooks or paste an AudiobookBay link';
+    renderMyBooksView();
+}
 
 // Deferred init
 setTimeout(() => {
@@ -524,4 +603,3 @@ window.isCloudLoggedIn = isCloudLoggedIn;
         if (e.key === 'Enter') loginBtn?.click();
     });
 })();
-

@@ -66,6 +66,40 @@ export function setPlaybackDeps(deps) {
 
 export function setVisualizerActive(val) { visualizerActive = val; }
 
+function chapterStart(track) {
+    return Number.isFinite(Number(track?.chapter_start)) ? Number(track.chapter_start) : 0;
+}
+
+function chapterEnd(track, player = getActivePlayer()) {
+    const rawEnd = track?.chapter_end;
+    const end = Number(rawEnd);
+    return rawEnd != null && Number.isFinite(end) ? end : player.duration;
+}
+
+function relativeTrackPosition(track, player = getActivePlayer()) {
+    return Math.max(0, player.currentTime - chapterStart(track));
+}
+
+function switchToVirtualChapter(nextIndex, seekToStart) {
+    const previousTrack = state.queue[state.currentIndex];
+    const nextTrack = state.queue[nextIndex];
+    if (!previousTrack || !nextTrack || previousTrack.isrc !== nextTrack.isrc ||
+        !Number.isFinite(Number(nextTrack.chapter_start))) return false;
+
+    markEpisodePlayed(previousTrack.id);
+    clearEpisodePosition(previousTrack.id);
+    state.currentIndex = nextIndex;
+    state.scrobbledCurrent = false;
+    state.lastSavedPositionTime = 0;
+    if (seekToStart) getActivePlayer().currentTime = chapterStart(nextTrack);
+    updatePlayerUI();
+    updateQueueUI();
+    updateFullscreenUI(nextTrack);
+    if (updateMediaSession) updateMediaSession(nextTrack);
+    addToAudiobookHistory(nextTrack);
+    return true;
+}
+
 // ========== PLAYBACK ==========
 export function playTrack(track) {
     if (!track || !track.id) {
@@ -174,8 +208,21 @@ export function updatePlayerUI() {
     const track = state.queue[state.currentIndex];
 
     playerBar.classList.remove('hidden');
+    document.documentElement.classList.toggle('audiobook-playing', track.source === 'audiobook');
+    document.documentElement.classList.toggle('podcast-playing', track.source === 'podcast');
+    document.documentElement.classList.toggle('music-playing', track.source !== 'audiobook' && track.source !== 'podcast');
     playerTitle.textContent = track.name;
+    playerTitle.title = track.source === 'audiobook'
+        ? 'Open book'
+        : track.source === 'podcast' ? 'Open episode details' : 'Search for this track';
     playerArtist.textContent = track.artists || '-';
+    playerArtist.title = track.source === 'audiobook'
+        ? 'Open book'
+        : track.source === 'podcast' ? 'Open episode details' : 'Search artist';
+
+    const restartLabel = restartChapterBtn?.querySelector('.player-menu-label');
+    if (restartLabel) restartLabel.textContent = track.source === 'audiobook' ? 'Restart chapter' : 'Restart episode';
+    if (restartChapterBtn) restartChapterBtn.title = track.source === 'audiobook' ? 'Restart current chapter' : 'Restart current episode';
 
     if (visualizerActive && showVisualizerInfoBriefly) {
         showVisualizerInfoBriefly();
@@ -391,12 +438,14 @@ export async function loadTrack(track) {
         }
     }
 
+    const resumeOffset = Number(track._resumeAt) || 0;
+    const desiredStart = chapterStart(track) + resumeOffset;
+
     // Set source
     if (track.is_local && track.src) {
         let baseSrc = track.src;
-        if (track._resumeAt && track._resumeAt > 10) {
-            baseSrc += `#t=${track._resumeAt}`;
-            delete track._resumeAt;
+        if (desiredStart > 0) {
+            baseSrc += `#t=${desiredStart}`;
         }
         player.src = baseSrc;
     } else {
@@ -405,12 +454,12 @@ export async function loadTrack(track) {
         const sourceParam = track.source ? `&source=${track.source}` : '';
         let targetSrc = `/api/stream/${track.isrc || track.id}?q=${encodeURIComponent(track.name + ' ' + track.artists)}${hiresParam}${qualityParam}${sourceParam}`;
 
-        if (track._resumeAt && track._resumeAt > 10) {
-            targetSrc += `#t=${track._resumeAt}`;
-            delete track._resumeAt;
+        if (desiredStart > 0) {
+            targetSrc += `#t=${desiredStart}`;
         }
         player.src = targetSrc;
     }
+    delete track._resumeAt;
 
     try {
         state.lastSavedPositionTime = 0;
@@ -427,7 +476,11 @@ export async function loadTrack(track) {
                 }
             };
 
-            player.onloadedmetadata = () => {};
+            player.onloadedmetadata = () => {
+                if (desiredStart > 0 && Math.abs(player.currentTime - desiredStart) > 0.25) {
+                    player.currentTime = desiredStart;
+                }
+            };
 
             player.oncanplay = () => {
                 cleanup();
@@ -542,8 +595,10 @@ export function playNext(forceAdvance) {
     const currentTrack = state.queue[state.currentIndex];
     const player = getActivePlayer();
 
+    if (forceAdvance && switchToVirtualChapter(state.currentIndex + 1, true)) return;
+
     if (!forceAdvance && currentTrack && (currentTrack.source === 'podcast' || currentTrack.source === 'audiobook')) {
-        const remaining = (player.duration || 0) - player.currentTime;
+        const remaining = chapterEnd(currentTrack, player) - player.currentTime;
         if (remaining > 15) {
             player.currentTime = player.currentTime + 15;
             return;
@@ -600,7 +655,7 @@ export function playPrevious() {
     const player = getActivePlayer();
 
     if (currentTrack && (currentTrack.source === 'podcast' || currentTrack.source === 'audiobook')) {
-        player.currentTime = Math.max(0, player.currentTime - 15);
+        player.currentTime = Math.max(chapterStart(currentTrack), player.currentTime - 15);
         return;
     }
     if (player.currentTime > 3) {
@@ -628,27 +683,10 @@ function handlePause(e) {
 
         // Save podcast/audiobook position on any pause
         if (currentTrack && (currentTrack.source === 'podcast' || currentTrack.source === 'audiobook')) {
-            if (player.currentTime > 5) {
-                saveEpisodePosition(currentTrack.id, player.currentTime);
+            const relativePosition = relativeTrackPosition(currentTrack, player);
+            if (relativePosition > 5) {
+                saveEpisodePosition(currentTrack.id, relativePosition);
             }
-        }
-
-        // Check if this is a background/system interrupt rather than user action.
-        // If the track ended naturally, handleEnded will take care of advancing.
-        // If the user didn't pause manually but the player stopped (e.g. Android
-        // background throttling, network hiccup), try to resume after a short delay.
-        // Skip during track transitions — the old player fires a pause event that
-        // we should not try to recover from.
-        if (state.isPlaying && !player.ended && player.readyState >= 2 && !audio.transitionInProgress && !audio.loadInProgress) {
-            // Likely a background interrupt — attempt auto-resume
-            setTimeout(() => {
-                const p = getActivePlayer();
-                if (state.isPlaying && p.paused && !p.ended && p.readyState >= 2 && !audio.transitionInProgress && !audio.loadInProgress) {
-                    console.warn('Auto-resuming after unexpected pause');
-                    p.play().catch(() => {});
-                }
-            }, 1500);
-            return; // Don't update UI state to paused — we're trying to recover
         }
 
         state.isPlaying = false;
@@ -692,9 +730,19 @@ function handleTimeUpdate() {
     const player = getActivePlayer();
     if (state.syncEnabled) sendTimeUpdate(player.currentTime);
     if (player.duration) {
-        currentTime.textContent = formatTime(player.currentTime);
-        duration.textContent = formatTime(player.duration);
-        progressBar.value = (player.currentTime / player.duration) * 100;
+        const currentTrack = state.queue[state.currentIndex];
+        const start = chapterStart(currentTrack);
+        const end = chapterEnd(currentTrack, player);
+        const displayPosition = Math.max(0, player.currentTime - start);
+        const displayDuration = Math.max(0, end - start);
+
+        const hasChapterEnd = currentTrack?.chapter_end != null && Number.isFinite(Number(currentTrack.chapter_end));
+        if (hasChapterEnd && player.currentTime >= end - 0.15 &&
+            switchToVirtualChapter(state.currentIndex + 1, false)) return;
+
+        currentTime.textContent = formatTime(displayPosition);
+        duration.textContent = formatTime(displayDuration);
+        progressBar.value = displayDuration > 0 ? (displayPosition / displayDuration) * 100 : 0;
 
         fsCurrentTime.textContent = currentTime.textContent;
         fsDuration.textContent = duration.textContent;
@@ -709,22 +757,21 @@ function handleTimeUpdate() {
             }
         }
 
-        const currentTrack = state.queue[state.currentIndex];
         if (currentTrack && (currentTrack.source === 'podcast' || currentTrack.source === 'audiobook')) {
-            if (player.currentTime > 5 && player.currentTime > state.lastSavedPositionTime + 10) {
-                saveEpisodePosition(currentTrack.id, player.currentTime);
-                state.lastSavedPositionTime = player.currentTime;
+            if (displayPosition > 5 && displayPosition > state.lastSavedPositionTime + 10) {
+                saveEpisodePosition(currentTrack.id, displayPosition);
+                state.lastSavedPositionTime = displayPosition;
             }
         }
 
-        const timeRemaining = player.duration - player.currentTime;
-        if (timeRemaining <= 60 && timeRemaining > 0 && !audio.preloadedTrackId) {
+        const timeRemaining = end - player.currentTime;
+        if (!hasChapterEnd && timeRemaining <= 60 && timeRemaining > 0 && !audio.preloadedTrackId) {
             preloadNextTrack();
         }
 
         const crossfadeTime = audio.crossfadeEnabled ? audio.CROSSFADE_DURATION / 1000 : 0.2;
 
-        if (timeRemaining <= crossfadeTime && timeRemaining > 0 && audio.preloadedPlayer && !audio.crossfadeTimeout && !audio.transitionInProgress) {
+        if (!hasChapterEnd && timeRemaining <= crossfadeTime && timeRemaining > 0 && audio.preloadedPlayer && !audio.crossfadeTimeout && !audio.transitionInProgress) {
             audio.crossfadeTimeout = setTimeout(() => {
                 audio.crossfadeTimeout = null;
             }, crossfadeTime * 1000 + 1000);
@@ -776,9 +823,8 @@ function handlePlaying() {
 }
 
 // ========== PLAYBACK WATCHDOG ==========
-// Periodic check: if we think we're playing but audio is stalled/paused,
-// attempt recovery. This catches edge cases missed by event handlers
-// (e.g. Android background throttling, frozen timers).
+// Recover missed ended events, but never override a pause from Android audio
+// focus, headphones, Bluetooth controls, or another media app.
 setInterval(() => {
     if (!state.isPlaying) return;
     // Don't interfere while a track is actively loading or transitioning
@@ -786,24 +832,48 @@ setInterval(() => {
     const player = getActivePlayer();
     if (!player || !player.src) return;
 
-    // Player is paused but we think we're playing
-    if (player.paused && !player.ended) {
-        if (player.readyState >= 2) {
-            console.warn('[Watchdog] Player paused unexpectedly — resuming');
-            player.play().catch(() => {});
-        } else if (player.readyState === 0 && state.currentIndex < state.queue.length - 1) {
-            // Player completely lost its source — skip to next
-            console.warn('[Watchdog] Player source lost — advancing to next track');
-            playNext(true);
-        }
-    }
-
     // Player reached the end but handleEnded didn't fire (rare)
     if (!player.paused && player.ended && state.currentIndex < state.queue.length - 1) {
         console.warn('[Watchdog] Track ended but handler missed — advancing');
         playNext(true);
     }
 }, 5000);
+
+export function handleNativeMediaCommand(command, value = 0) {
+    const player = getActivePlayer();
+    switch (command) {
+        case 'play':
+            if (player.paused) togglePlay();
+            break;
+        case 'pause':
+            if (!player.paused) {
+                state.isPlaying = false;
+                updatePlayButton();
+                player.pause();
+            }
+            break;
+        case 'previous':
+            playPrevious();
+            break;
+        case 'next':
+            playNext(true);
+            break;
+        case 'seekTo':
+            if (Number.isFinite(player.duration) && player.duration > 0) {
+                const track = state.queue[state.currentIndex];
+                const start = chapterStart(track);
+                const end = chapterEnd(track, player);
+                player.currentTime = Math.max(start, Math.min(start + Number(value) / 1000, end));
+            }
+            break;
+        case 'stop':
+            state.isPlaying = false;
+            player.pause();
+            player.currentTime = chapterStart(state.queue[state.currentIndex]);
+            updatePlayButton();
+            break;
+    }
+}
 
 // ========== BIND EVENTS ==========
 audioPlayer.addEventListener('play', handlePlay);
@@ -869,14 +939,25 @@ shuffleQueueBtn.addEventListener('click', () => {
 progressBar.addEventListener('input', (e) => {
     const player = getActivePlayer();
     if (player.duration && Number.isFinite(player.duration)) {
-        player.currentTime = (e.target.value / 100) * player.duration;
+        const track = state.queue[state.currentIndex];
+        const start = chapterStart(track);
+        const end = chapterEnd(track, player);
+        player.currentTime = start + (e.target.value / 100) * (end - start);
         e.target.style.setProperty('--value', e.target.value + '%');
         if (fsProgressBar) fsProgressBar.style.setProperty('--value', e.target.value + '%');
     }
 });
 
 export function updatePlayButton() {
-    playBtn.textContent = state.isPlaying ? '⏸' : '▶';
+    if (state.isPlaying) {
+        playBtn.innerHTML = '<svg class="playback-icon playback-icon-pause" viewBox="0 0 24 24" aria-hidden="true"><rect x="6.5" y="5" width="4" height="14" rx="1" fill="currentColor"></rect><rect x="13.5" y="5" width="4" height="14" rx="1" fill="currentColor"></rect></svg>';
+        playBtn.title = 'Pause';
+        playBtn.setAttribute('aria-label', 'Pause');
+    } else {
+        playBtn.innerHTML = '<svg class="playback-icon playback-icon-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10-6.5z" fill="currentColor"></path></svg>';
+        playBtn.title = 'Play';
+        playBtn.setAttribute('aria-label', 'Play');
+    }
     updateFSPlayBtn();
 }
 
@@ -941,7 +1022,7 @@ if (fsPrevBtn) {
         const currentTrack = state.queue[state.currentIndex];
         const player = getActivePlayer();
         if (currentTrack && (currentTrack.source === 'podcast' || currentTrack.source === 'audiobook')) {
-            player.currentTime = Math.max(0, player.currentTime - 15);
+            player.currentTime = Math.max(chapterStart(currentTrack), player.currentTime - 15);
         } else {
             prevBtn.click();
         }
@@ -952,7 +1033,7 @@ if (fsNextBtn) {
         const currentTrack = state.queue[state.currentIndex];
         const player = getActivePlayer();
         if (currentTrack && (currentTrack.source === 'podcast' || currentTrack.source === 'audiobook')) {
-            const remaining = (player.duration || 0) - player.currentTime;
+            const remaining = chapterEnd(currentTrack, player) - player.currentTime;
             if (remaining > 15) {
                 player.currentTime = player.currentTime + 15;
             } else {
@@ -980,7 +1061,10 @@ if (fsProgressBar) {
     fsProgressBar.addEventListener('input', (e) => {
         const player = getActivePlayer();
         if (player.duration) {
-            player.currentTime = (e.target.value / 100) * player.duration;
+            const track = state.queue[state.currentIndex];
+            const start = chapterStart(track);
+            const end = chapterEnd(track, player);
+            player.currentTime = start + (e.target.value / 100) * (end - start);
         }
     });
 }
@@ -988,6 +1072,8 @@ if (fsProgressBar) {
 // More menu
 const moreControlsBtn = $('#more-controls-btn');
 const playerMoreMenu = $('#player-more-menu');
+const playerBookBtn = $('#player-book-btn');
+const restartChapterBtn = $('#restart-chapter-btn');
 
 if (moreControlsBtn && playerMoreMenu) {
     moreControlsBtn.addEventListener('click', (e) => {
@@ -1004,6 +1090,22 @@ if (moreControlsBtn && playerMoreMenu) {
     });
 }
 
+playerBookBtn?.addEventListener('click', () => {
+    const track = state.queue[state.currentIndex];
+    if (track?.source === 'audiobook') emit('openAudiobookFromPlayer', track);
+    playerMoreMenu?.classList.add('hidden');
+});
+
+restartChapterBtn?.addEventListener('click', () => {
+    const track = state.queue[state.currentIndex];
+    if (!track || !['audiobook', 'podcast'].includes(track.source)) return;
+    clearEpisodePosition(track.id);
+    delete track._resumeAt;
+    getActivePlayer().currentTime = chapterStart(track);
+    showToast(track.source === 'audiobook' ? 'Restarted this chapter' : 'Restarted this episode');
+    playerMoreMenu?.classList.add('hidden');
+});
+
 // Nav links
 playerTitle.classList.add('clickable-link');
 playerArtist.classList.add('clickable-link');
@@ -1012,6 +1114,14 @@ playerTitle.addEventListener('click', () => {
     if (state.currentIndex >= 0 && !fullscreenPlayer.classList.contains('hidden')) toggleFullScreen();
     if (state.currentIndex >= 0) {
         const track = state.queue[state.currentIndex];
+        if (track.source === 'audiobook') {
+            emit('openAudiobookFromPlayer', track);
+            return;
+        }
+        if (track.source === 'podcast' && showPodcastModal) {
+            showPodcastModal(track);
+            return;
+        }
         if (performSearch) performSearch(track.name + " " + track.artists);
     }
 });
@@ -1026,8 +1136,15 @@ if (playerAlbum) {
 }
 
 playerArtist.addEventListener('click', () => {
-    if (state.currentIndex >= 0 && performSearch) {
-        performSearch(state.queue[state.currentIndex].artists);
+    if (state.currentIndex >= 0) {
+        const track = state.queue[state.currentIndex];
+        if (track.source === 'audiobook') {
+            emit('openAudiobookFromPlayer', track);
+        } else if (track.source === 'podcast' && showPodcastModal) {
+            showPodcastModal(track);
+        } else if (performSearch) {
+            performSearch(track.artists);
+        }
     }
 });
 

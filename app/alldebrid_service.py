@@ -1,9 +1,11 @@
 """AllDebrid API adapter for audiobook magnet caching and playback."""
 
+import asyncio
 import base64
 import binascii
 import logging
 import os
+import re
 from urllib.parse import unquote, urlparse
 
 import httpx
@@ -11,10 +13,13 @@ from fastapi import HTTPException
 
 
 logger = logging.getLogger(__name__)
-ALLDEBRID_API_KEY = os.getenv("ALLDEBRID_API_KEY")
 API_BASE_URL = "https://api.alldebrid.com"
 APP_NAME = "Freedify"
 AUDIO_EXTENSIONS = (".mp3", ".m4b", ".m4a", ".flac", ".wav", ".ogg", ".aac", ".opus")
+
+
+def _natural_path_key(path: str):
+    return [int(part) if part.isdigit() else part for part in re.split(r"(\d+)", path.lower())]
 
 
 async def _make_request(
@@ -23,36 +28,49 @@ async def _make_request(
     params: dict | None = None,
     data: dict | None = None,
 ):
-    if not ALLDEBRID_API_KEY:
+    api_key = os.getenv("ALLDEBRID_API_KEY")
+    if not api_key:
         raise HTTPException(
             status_code=500,
             detail="AllDebrid API key is missing. Add ALLDEBRID_API_KEY to your .env file.",
         )
 
-    headers = {"Authorization": f"Bearer {ALLDEBRID_API_KEY}"}
+    headers = {"Authorization": f"Bearer {api_key}"}
     query_params = {"agent": APP_NAME}
     if params:
         query_params.update(params)
 
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            if method == "GET":
-                response = await client.get(
-                    f"{API_BASE_URL}{endpoint}", headers=headers, params=query_params
-                )
-            elif method == "POST":
-                response = await client.post(
-                    f"{API_BASE_URL}{endpoint}",
-                    headers=headers,
-                    params=query_params,
-                    data=data,
-                )
-            else:
-                raise ValueError(f"Unsupported HTTP method: {method}")
-    except httpx.RequestError as exc:
+    response = None
+    last_request_error = None
+    for attempt in range(3):
+        try:
+            # Keep the total three-attempt window below the UI request timeout,
+            # so a stalled mobile connection cannot leave overlapping polls.
+            async with httpx.AsyncClient(timeout=12.0) as client:
+                if method == "GET":
+                    response = await client.get(
+                        f"{API_BASE_URL}{endpoint}", headers=headers, params=query_params
+                    )
+                elif method == "POST":
+                    response = await client.post(
+                        f"{API_BASE_URL}{endpoint}",
+                        headers=headers,
+                        params=query_params,
+                        data=data,
+                    )
+                else:
+                    raise ValueError(f"Unsupported HTTP method: {method}")
+            break
+        except httpx.RequestError as exc:
+            last_request_error = exc
+            if attempt < 2:
+                await asyncio.sleep(0.5 * (attempt + 1))
+
+    if response is None:
         raise HTTPException(
-            status_code=502, detail=f"Request to AllDebrid failed: {exc}"
-        ) from exc
+            status_code=502,
+            detail=f"Request to AllDebrid failed after 3 attempts: {last_request_error}",
+        ) from last_request_error
 
     try:
         payload = response.json()
@@ -98,22 +116,30 @@ async def create_transfer(magnet_link: str):
 def _normalise_transfer(magnet: dict) -> dict:
     size = magnet.get("size") or 0
     downloaded = magnet.get("downloaded") or 0
-    status_code = magnet.get("statusCode")
-    progress = 1.0 if status_code == 4 else (downloaded / size if size else 0.0)
+    try:
+        status_code = int(magnet.get("statusCode"))
+    except (TypeError, ValueError):
+        status_code = None
+    status_text = str(magnet.get("status") or "").strip()
+    is_ready = bool(magnet.get("ready")) or status_code == 4 or status_text.lower() == "ready"
+    progress = 1.0 if is_ready else (downloaded / size if size else 0.0)
     return {
         **magnet,
         "id": str(magnet.get("id")),
         "name": magnet.get("filename") or magnet.get("name"),
-        "message": magnet.get("status", "Downloading"),
-        "status": "finished" if status_code == 4 else ("error" if status_code and status_code >= 5 else "running"),
+        "message": status_text or "Downloading",
+        "status": "finished" if is_ready else ("error" if status_code and status_code >= 5 else "running"),
         "progress": max(0.0, min(progress, 1.0)),
-        "folder_id": str(magnet.get("id")) if status_code == 4 else None,
+        "folder_id": str(magnet.get("id")) if is_ready else None,
     }
 
 
 async def check_transfer_status(transfer_id: str | None = None):
     params = {"id": transfer_id} if transfer_id else None
-    data = await _make_request("/v4.1/magnet/status", method="POST", data=params)
+    # AllDebrid supports both verbs for this endpoint. GET is more reliable in
+    # embedded Android environments because it avoids a fresh form-body upload
+    # on every polling request.
+    data = await _make_request("/v4.1/magnet/status", params=params)
     transfers = [_normalise_transfer(item) for item in data.get("magnets", [])]
     if transfer_id:
         return transfers[0] if transfers else None
@@ -176,20 +202,39 @@ async def list_folder_contents(magnet_id: str):
             item["link"] = item["source_link"]
             item["type"] = "file"
             audio_files.append(item)
-    audio_files.sort(key=lambda item: item["path"].lower())
+    audio_files.sort(key=lambda item: _natural_path_key(item["path"]))
+    chapter_scan = {"attempted": False, "count": 0, "error": None}
+
+    # AllDebrid's file API cannot see chapters embedded inside a single M4B.
+    # Unlock that file and let Mutagen inspect its small MP4 metadata ranges.
+    # Any metadata failure is non-fatal: the M4B remains playable as one track.
+    if len(audio_files) == 1 and audio_files[0]["name"].lower().endswith(".m4b"):
+        chapter_scan["attempted"] = True
+        try:
+            from app.m4b_chapter_service import extract_m4b_chapters
+
+            playable_link = await unlock_link(audio_files[0]["source_link"])
+            chapter_data = await asyncio.to_thread(extract_m4b_chapters, playable_link)
+            if chapter_data["chapters"]:
+                audio_files[0]["chapters"] = chapter_data["chapters"]
+                audio_files[0]["duration"] = chapter_data["duration"]
+                chapter_scan["count"] = len(chapter_data["chapters"])
+        except Exception as exc:
+            logger.warning("Could not read embedded M4B chapters: %s", exc)
+            chapter_scan["error"] = "Embedded chapter metadata could not be read"
+
     return {
         "status": "success",
         "audio_files": audio_files,
         "folders": [],
         "name": magnet.get("filename", "AllDebrid magnet"),
+        "chapter_scan": chapter_scan,
     }
 
 
 async def search_my_files(query: str):
     """Search ready AllDebrid magnets by name (AllDebrid has no cloud search API)."""
-    data = await _make_request(
-        "/v4.1/magnet/status", method="POST", data={"status": "ready"}
-    )
+    data = await _make_request("/v4.1/magnet/status", params={"status": "ready"})
     terms = [term for term in query.lower().split() if term]
     results = []
     for magnet in data.get("magnets", []):
