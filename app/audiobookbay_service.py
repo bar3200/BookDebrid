@@ -31,6 +31,37 @@ def _split_title_author(raw_title: str) -> tuple[str, str | None]:
     return title, candidate
 
 
+def _extract_genres(container) -> list[str]:
+    """Extract ABB category labels from links or its labelled metadata text."""
+    if not container:
+        return []
+    genres: list[str] = []
+    seen: set[str] = set()
+
+    def add(value: str):
+        clean = " ".join(value.split()).strip(" ,/|·")
+        normalized = clean.lower()
+        if clean and len(clean) <= 40 and normalized not in seen and normalized != "audiobook":
+            seen.add(normalized)
+            genres.append(clean)
+
+    for anchor in container.find_all("a", href=True):
+        href = anchor.get("href", "").lower()
+        if any(marker in href for marker in ("/genre/", "/genres/", "/category/", "?cat=")):
+            add(anchor.get_text(" ", strip=True))
+
+    text = container.get_text("\n", strip=True)
+    match = re.search(
+        r"(?:categories|category|genres|genre)\s*:\s*(.+?)(?=\n(?:language|keywords?|file size|size|bitrate|format|release date)\s*:|$)",
+        text,
+        re.I | re.S,
+    )
+    if match:
+        for value in re.split(r"[,/|·\n]+", match.group(1)):
+            add(value)
+    return genres[:8]
+
+
 def _create_driver():
     """Create a memory-optimized headless Chrome driver for constrained environments (Render, Docker)."""
     # Keep desktop browser dependencies out of the Android APK. They are loaded
@@ -365,6 +396,7 @@ def _parse_search_results(html_content: str):
             "url": link,
             "cover_image": cover_image,
             "description": desc_text[:200] + "..." if len(desc_text) > 200 else desc_text,
+            "genres": _extract_genres(post_content or post),
             "source": "audiobookbay"
         })
 
@@ -440,6 +472,7 @@ async def get_audiobook_details(slug: str):
     # Get description text
     desc_div = soup.find('div', class_='desc')
     description = desc_div.text.strip() if desc_div else ""
+    genres = _extract_genres(cover_elem or soup)
 
     return {
         "id": slug,
@@ -447,6 +480,7 @@ async def get_audiobook_details(slug: str):
         "author": author,
         "cover_image": cover_image,
         "description": description,
+        "genres": genres,
         "info_hash": info_hash,
         "magnet_link": magnet_link,
         "source": "audiobook"

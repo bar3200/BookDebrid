@@ -395,8 +395,25 @@ function renderMyPodcastsView() {
 } // end renderMyPodcastsView
 
 // ========== MY BOOKS PAGE ==========
+let selectedAudiobookGenre = 'all';
+
+function getBookGenres(book) {
+    return Array.isArray(book?.genres)
+        ? [...new Set(book.genres.map(genre => String(genre).trim()).filter(Boolean))]
+        : [];
+}
+
 function renderMyBooksView() {
     const resultsContainer = document.getElementById('results-container');
+
+    const genres = [...new Set(state.audiobookFavorites.flatMap(getBookGenres))]
+        .sort((a, b) => a.localeCompare(b));
+    if (selectedAudiobookGenre !== 'all' && !genres.includes(selectedAudiobookGenre)) {
+        selectedAudiobookGenre = 'all';
+    }
+    const visibleBooks = selectedAudiobookGenre === 'all'
+        ? state.audiobookFavorites
+        : state.audiobookFavorites.filter(book => getBookGenres(book).includes(selectedAudiobookGenre));
 
     // Header
     let html = `
@@ -418,10 +435,21 @@ function renderMyBooksView() {
         return;
     }
 
+    if (genres.length > 0) {
+        html += `
+            <div class="audiobook-genre-toolbar" aria-label="Filter saved books by genre">
+                <button class="audiobook-genre-chip ${selectedAudiobookGenre === 'all' ? 'active' : ''}" data-genre="all">All</button>
+                ${genres.map(genre => `
+                    <button class="audiobook-genre-chip ${selectedAudiobookGenre === genre ? 'active' : ''}" data-genre="${escapeHtml(genre)}">${escapeHtml(genre)}</button>
+                `).join('')}
+            </div>
+        `;
+    }
+
     // Grid
     html += `<div class="dashboard-grid dashboard-grid-albums" id="my-books-grid">`;
 
-    state.audiobookFavorites.forEach(book => {
+    visibleBooks.forEach(book => {
         const hasCachedTracks = book.cachedTracks && book.cachedTracks.length > 0;
         const badgeText = hasCachedTracks ? '▶ Ready' : '⏳ Not cached';
         const badgeStyle = hasCachedTracks
@@ -450,6 +478,7 @@ function renderMyBooksView() {
                 <div class="dashboard-card-info">
                     <p class="dashboard-card-title">${escapeHtml(book.name)}</p>
                     <p class="dashboard-card-subtitle">${escapeHtml(book.artist)}</p>
+                    ${getBookGenres(book).length ? `<div class="audiobook-card-genres">${getBookGenres(book).slice(0, 2).map(genre => `<span>${escapeHtml(genre)}</span>`).join('')}</div>` : ''}
                     ${resumeInfo}
                 </div>
             </div>
@@ -458,6 +487,13 @@ function renderMyBooksView() {
 
     html += `</div>`;
     resultsContainer.innerHTML = html;
+
+    resultsContainer.querySelectorAll('.audiobook-genre-chip').forEach(button => {
+        button.addEventListener('click', () => {
+            selectedAudiobookGenre = button.dataset.genre || 'all';
+            renderMyBooksView();
+        });
+    });
 
     // Render recently played audiobook chapters
     if (state.audiobookHistory.length > 0) {
@@ -557,6 +593,9 @@ function openBookInfoModal(book) {
     } else {
         badgeHtml += `<span class="book-info-badge">⏳ Not yet downloaded</span>`;
     }
+    getBookGenres(book).slice(0, 4).forEach(genre => {
+        badgeHtml += `<span class="book-info-badge genres">${escapeHtml(genre)}</span>`;
+    });
     badgesEl.innerHTML = badgeHtml;
 
     // Description
@@ -589,7 +628,7 @@ function openBookInfoModal(book) {
             // Lazy-load Goodreads data on first tab click
             if (target === 'reviews' && !modal._goodreadsLoaded) {
                 modal._goodreadsLoaded = true;
-                fetchGoodreadsData(book.name, book.artist);
+                fetchGoodreadsData(book);
             }
         };
     });
@@ -667,6 +706,9 @@ function openBookInfoModal(book) {
     const refreshBtn = document.getElementById('book-info-refresh-btn');
     refreshBtn.textContent = book.cachedTracks?.length ? 'Refresh chapters' : 'Cache audiobook';
     refreshBtn.onclick = () => refreshBookChapters(book);
+
+    const similarBtn = document.getElementById('book-info-similar-btn');
+    similarBtn.onclick = () => showSimilarBooks(book);
 
     // Delete from Cloud button
     const deleteBtn = document.getElementById('book-info-delete-btn');
@@ -783,9 +825,11 @@ on('openAudiobookFromPlayer', track => {
     else emit('renderMyBooksView');
 });
 
-async function fetchGoodreadsData(title, author) {
+async function fetchGoodreadsData(book) {
     const container = document.getElementById('book-info-goodreads');
     const badgesEl = document.getElementById('book-info-badges');
+    const title = book.name;
+    const author = book.artist;
 
     try {
         const params = new URLSearchParams({ title });
@@ -816,8 +860,12 @@ async function fetchGoodreadsData(title, author) {
 
         // Add genres
         if (data.genres && data.genres.length > 0) {
+            book.genres = [...new Set([...(book.genres || []), ...data.genres])];
+            book.metadata_source = 'goodreads';
             data.genres.slice(0, 4).forEach(g => {
-                badgesEl.innerHTML += `<span class="book-info-badge genres">${g}</span>`;
+                if (![...badgesEl.querySelectorAll('.genres')].some(el => el.textContent === g)) {
+                    badgesEl.innerHTML += `<span class="book-info-badge genres">${escapeHtml(g)}</span>`;
+                }
             });
         }
 
@@ -825,7 +873,11 @@ async function fetchGoodreadsData(title, author) {
         const descEl = document.getElementById('book-info-description');
         if (data.description && data.description.length > (descEl.textContent || '').length) {
             descEl.textContent = data.description;
+            book.description = data.description;
         }
+        if (data.rating) book.goodreads_rating = data.rating;
+        if (data.url) book.goodreads_url = data.url;
+        saveAudiobookFavorites();
 
         // Build reviews section
         let html = '';
@@ -884,6 +936,71 @@ async function fetchGoodreadsData(title, author) {
                 <a href="https://www.goodreads.com/search?q=${encodeURIComponent(title)}" target="_blank" rel="noopener" class="book-info-gr-link" style="margin-top: 10px;">🔍 Search on Goodreads manually</a>
             </div>
         `;
+    }
+}
+
+async function showSimilarBooks(book) {
+    document.getElementById('book-info-modal').classList.add('hidden');
+    showLoading(`Finding books like "${book.name}"...`);
+    try {
+        const params = new URLSearchParams({
+            title: book.name,
+            author: ['audiobook', 'audiobookbay', 'unknown', 'unknown author'].includes(String(book.artist || '').toLowerCase()) ? '' : book.artist,
+            genres: getBookGenres(book).join(','),
+        });
+        const response = await fetch(`/api/audiobooks/discover?${params}`);
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || 'Could not load similar books');
+
+        if (data.genres?.length) {
+            book.genres = [...new Set([...(book.genres || []), ...data.genres])];
+            book.metadata_source = book.metadata_source || 'openlibrary';
+            saveAudiobookFavorites();
+        }
+
+        hideLoading();
+        const recommendations = data.recommendations || [];
+        const genreText = (data.genres || []).slice(0, 3).join(' · ');
+        resultsContainer.innerHTML = `
+            <section class="audiobook-discovery-view">
+                <div class="audiobook-discovery-header">
+                    <button id="discovery-back-books" class="album-action-btn">← My Books</button>
+                    <div>
+                        <p class="audiobook-discovery-eyebrow">Because you saved</p>
+                        <h2>Books like ${escapeHtml(book.name)}</h2>
+                        ${genreText ? `<p>${escapeHtml(genreText)}</p>` : ''}
+                    </div>
+                </div>
+                ${recommendations.length ? `
+                    <div class="audiobook-discovery-grid">
+                        ${recommendations.map(item => `
+                            <article class="audiobook-discovery-card">
+                                <img src="${item.cover_image || '/static/icon.svg'}" alt="${escapeHtml(item.title)}" loading="lazy">
+                                <div class="audiobook-discovery-card-body">
+                                    <h3>${escapeHtml(item.title)}</h3>
+                                    <p>${escapeHtml(item.author || 'Unknown author')}</p>
+                                    <div class="audiobook-card-genres">${(item.genres || []).map(genre => `<span>${escapeHtml(genre)}</span>`).join('')}</div>
+                                    <button class="album-action-btn primary discovery-find-audio" data-query="${escapeHtml(item.title)}">Find audiobook</button>
+                                </div>
+                            </article>
+                        `).join('')}
+                    </div>
+                    <p class="audiobook-discovery-note">Recommendations come from Open Library. “Find audiobook” checks AudiobookBay for an available recording.</p>
+                ` : `<div class="empty-state"><p>No similar books were found for the available metadata.</p></div>`}
+            </section>
+        `;
+        document.getElementById('discovery-back-books')?.addEventListener('click', renderMyBooksView);
+        resultsContainer.querySelectorAll('.discovery-find-audio').forEach(button => {
+            button.addEventListener('click', () => {
+                const query = button.dataset.query;
+                state.searchType = 'audiobook';
+                searchInput.value = query;
+                emit('performSearch', query);
+            });
+        });
+    } catch (error) {
+        hideLoading();
+        showError(error.message || 'Could not load similar books');
     }
 }
 
@@ -2183,8 +2300,11 @@ async function openAudiobook(id) {
             const bookInfo = {
                 id: currentAudiobookDetails.id || id,
                 name: currentAudiobookDetails.title,
-                artist: 'AudiobookBay',
-                artwork: currentAudiobookDetails.cover_image || '/static/icon.svg'
+                artist: currentAudiobookDetails.author || 'AudiobookBay',
+                artwork: currentAudiobookDetails.cover_image || '/static/icon.svg',
+                description: currentAudiobookDetails.description || '',
+                genres: currentAudiobookDetails.genres || [],
+                info_hash: currentAudiobookDetails.info_hash || null,
             };
             const nowFav = toggleAudiobookFavorite(bookInfo);
             favBtn.textContent = nowFav ? '❤️ In My Books' : '🤍 Save to My Books';
@@ -2310,6 +2430,12 @@ function processDirectAudioFiles(audioFiles, details, provider = getAudiobookPro
         }
         if (details.description) {
             state.audiobookFavorites[favIdx].description = details.description;
+        }
+        if (details.genres?.length) {
+            state.audiobookFavorites[favIdx].genres = [...new Set([
+                ...(state.audiobookFavorites[favIdx].genres || []),
+                ...details.genres,
+            ])];
         }
         saveAudiobookFavorites();
     }

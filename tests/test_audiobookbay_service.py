@@ -6,7 +6,9 @@ from unittest.mock import patch
 # Keep the pure ranking tests runnable without installing the full backend.
 try:
     import bs4  # noqa: F401
+    HAS_BS4 = True
 except ModuleNotFoundError:
+    HAS_BS4 = False
     sys.modules["bs4"] = types.SimpleNamespace(BeautifulSoup=object)
 
 try:
@@ -21,7 +23,9 @@ except ModuleNotFoundError:
 
 from app.audiobookbay_service import (
     _android_search_urls,
+    _extract_genres,
     _is_search_results_page,
+    _parse_search_results,
     _rank_search_results,
     _split_title_author,
     search_audiobooks,
@@ -87,6 +91,32 @@ class AudiobookSearchRankingTests(unittest.TestCase):
                 "The Silent Patient",
             )
         )
+
+    @unittest.skipUnless(HAS_BS4, "BeautifulSoup is required for markup parsing")
+    def test_search_results_retain_audiobook_categories(self):
+        html = """
+            <div class="post">
+              <div class="postTitle"><h2><a href="/audio-books/dune/">Dune - Frank Herbert</a></h2></div>
+              <div class="postContent">
+                <a href="/genre/science-fiction/">Science Fiction</a>
+                <a href="/category/adventure/">Adventure</a>
+                Language: English
+              </div>
+            </div>
+        """
+
+        result = _parse_search_results(html)[0]
+
+        self.assertEqual(result["genres"], ["Science Fiction", "Adventure"])
+
+    @unittest.skipUnless(HAS_BS4, "BeautifulSoup is required for markup parsing")
+    def test_labelled_category_text_is_supported(self):
+        container = bs4.BeautifulSoup(
+            "<div>Category: Mystery, Thriller\nLanguage: English</div>",
+            "html.parser",
+        )
+
+        self.assertEqual(_extract_genres(container), ["Mystery", "Thriller"])
 
 
 class AndroidAudiobookSearchTests(unittest.IsolatedAsyncioTestCase):

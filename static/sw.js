@@ -3,7 +3,7 @@
  * Caches app shell for offline access
  */
 
-const CACHE_NAME = 'freedify-v24';
+const CACHE_NAME = 'freedify-v25';
 const STATIC_ASSETS = [
     '/',
     '/static/styles.css',

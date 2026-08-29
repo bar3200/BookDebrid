@@ -394,13 +394,13 @@ export function renderResults(results, type, append = false) {
     } else if (type === 'audiobook') {
         results.forEach(book => {
             // Map audiobook properties to album card format
-            grid.innerHTML += renderAlbumCard({
+            grid.innerHTML += `<div class="audiobook-search-card-wrapper">${renderAlbumCard({
                 id: book.id,
                 name: book.title,
                 artists: book.author || 'AudiobookBay',
                 album_art: book.cover_image,
                 total_tracks: 'Audiobook'
-            });
+            })}${book.genres?.length ? `<div class="audiobook-card-genres">${book.genres.slice(0, 3).map(genre => `<span>${escapeHtml(genre)}</span>`).join('')}</div>` : ''}</div>`;
         });
     } else if (type === 'artist') {
         results.forEach(artist => {

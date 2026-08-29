@@ -25,8 +25,8 @@ android {
         applicationId = "com.freedify.android"
         minSdk = 24
         targetSdk = 35
-        versionCode = 12
-        versionName = "1.3.7"
+        versionCode = 13
+        versionName = "1.4.0"
 
         ndk {
             abiFilters += listOf("arm64-v8a", "x86_64")

@@ -415,6 +415,10 @@ class MainActivity : AppCompatActivity() {
                         try { id = new URL(id, location.href).pathname.replace(/^\/+|\/+$/g, ''); } catch (_) {}
                         const image = post.querySelector('img');
                         const content = post.querySelector('.postContent');
+                        const genres = [...post.querySelectorAll('a[href*="/genre/"], a[href*="/genres/"], a[href*="/category/"], a[href*="?cat="]')]
+                            .map(anchor => (anchor.textContent || '').trim())
+                            .filter((genre, index, all) => genre && genre.toLowerCase() !== 'audiobook' && all.indexOf(genre) === index)
+                            .slice(0, 8);
                         return {
                             id,
                             title,
@@ -422,6 +426,7 @@ class MainActivity : AppCompatActivity() {
                             url: link.href,
                             cover_image: image?.src || null,
                             description: (content?.innerText || '').trim().slice(0, 203),
+                            genres,
                             source: 'audiobookbay'
                         };
                     }).filter(item => item?.id && item?.title);

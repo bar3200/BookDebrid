@@ -415,6 +415,8 @@ export function addAudiobookFavorite(book) {
         debrid_id: book.debrid_id || null,
         info_hash: book.info_hash || null,
         description: book.description || '',
+        genres: Array.isArray(book.genres) ? book.genres : [],
+        metadata_source: book.metadata_source || null,
         addedAt: Date.now()
     });
     saveAudiobookFavorites();

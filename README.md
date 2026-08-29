@@ -85,6 +85,8 @@ security details, and the Android-specific limitations.
 - **AudiobookBay Search** - Search and download audiobooks via AudiobookBay with Premiumize or AllDebrid
 - **Book Info Modal** - Click any book for cover art, description, chapters, and play/resume controls
 - **Goodreads Reviews** - Integrated ratings, genres, and top community reviews from Goodreads
+- **Genre Discovery** - Filter saved books by genre and explore related books using low-volume Open Library metadata lookups
+- **Availability Handoff** - Recommended titles open an exact AudiobookBay search before using your configured debrid provider
 - **Resume Playback** - Cached audiobook tracks resume where you left off — even from the bookshelf
 - **Google Drive Sync** - Audiobook favorites, cached tracks, and progress sync across devices
 

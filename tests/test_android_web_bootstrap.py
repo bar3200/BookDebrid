@@ -33,6 +33,16 @@ class AndroidWebBootstrapTests(unittest.TestCase):
         self.assertIn("fun searchAudiobookBay(requestId: String, query: String, page: Int)", activity)
         self.assertIn("document.querySelector('input[name=\"s\"]')", activity)
         self.assertIn("document.querySelectorAll('div.post')", activity)
+        self.assertIn("const genres = [...post.querySelectorAll", activity)
+        self.assertIn("genres,", activity)
+
+    def test_audiobook_discovery_controls_are_in_web_ui(self):
+        index = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
+        views = (ROOT / "static" / "views.js").read_text(encoding="utf-8")
+
+        self.assertIn('id="book-info-similar-btn"', index)
+        self.assertIn("/api/audiobooks/discover", views)
+        self.assertIn("audiobook-genre-chip", views)
 
 
 if __name__ == "__main__":
