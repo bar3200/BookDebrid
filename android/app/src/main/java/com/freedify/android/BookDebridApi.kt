@@ -170,6 +170,15 @@ class BookDebridApi {
         fun streamUrl(chapter: AudiobookChapter): String =
             "$BASE_URL/api/stream/${encode(chapter.sourceId)}?q=${encode(chapter.title)}&source=audiobook"
 
+        fun imageUrl(rawUrl: String): String {
+            val value = rawUrl.trim()
+            if (value.isBlank()) return ""
+            val normalized = if (value.startsWith("//")) "https:$value" else value
+            if (normalized.startsWith("/")) return "$BASE_URL$normalized"
+            if (!normalized.startsWith("http://") && !normalized.startsWith("https://")) return ""
+            return "$BASE_URL/api/proxy_image?url=${encode(normalized)}"
+        }
+
         private fun encode(value: String): String = URLEncoder.encode(value, StandardCharsets.UTF_8.name())
             .replace("+", "%20")
 

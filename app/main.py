@@ -1812,8 +1812,15 @@ async def proxy_image(url: str):
         raise HTTPException(status_code=400, detail="No URL provided")
     
     try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(url, follow_redirects=True)
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            resp = await client.get(
+                url,
+                follow_redirects=True,
+                headers={
+                    "User-Agent": "Mozilla/5.0 (Android) BookDebrid/1.5",
+                    "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+                },
+            )
             if resp.status_code != 200:
                 raise HTTPException(status_code=resp.status_code, detail="Failed to fetch image")
             

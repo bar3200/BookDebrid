@@ -100,6 +100,16 @@ class AndroidWebBootstrapTests(unittest.TestCase):
         self.assertIn("fun importLegacy(payload: String)", store)
         self.assertIn("window.FreedifyAndroid?.syncAudiobookLibrary", data)
 
+    def test_native_book_covers_have_network_loader_and_local_proxy(self):
+        gradle = (ROOT / "android/app/build.gradle.kts").read_text(encoding="utf-8")
+        api = (ROOT / "android/app/src/main/java/com/freedify/android/BookDebridApi.kt").read_text(encoding="utf-8")
+        activity = (ROOT / "android/app/src/main/java/com/freedify/android/NativeMainActivity.kt").read_text(encoding="utf-8")
+
+        self.assertIn("coil-network-okhttp", gradle)
+        self.assertIn("fun imageUrl(rawUrl: String)", api)
+        self.assertIn("/api/proxy_image?url=", api)
+        self.assertIn("BookDebridApi.imageUrl(url)", activity)
+
     def test_android_uses_full_size_adaptive_bookdebrid_icon(self):
         manifest = (
             ROOT / "android/app/src/main/AndroidManifest.xml"

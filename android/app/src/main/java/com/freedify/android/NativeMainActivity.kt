@@ -589,10 +589,17 @@ private fun BookRow(book: Audiobook, onClick: () -> Unit) {
 
 @Composable
 private fun Cover(url: String, modifier: Modifier) {
+    val model = BookDebridApi.imageUrl(url)
+    var failed by remember(model) { mutableStateOf(false) }
     Surface(modifier.clip(RoundedCornerShape(12.dp)), color = MaterialTheme.colorScheme.surfaceVariant) {
-        if (url.isBlank()) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        if (model.isBlank() || failed) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Icon(Icons.Rounded.AutoStories, null, Modifier.size(38.dp))
-        } else AsyncImage(model = url, contentDescription = null, modifier = Modifier.fillMaxSize())
+        } else AsyncImage(
+            model = model,
+            contentDescription = null,
+            modifier = Modifier.fillMaxSize(),
+            onError = { failed = true },
+        )
     }
 }
 
