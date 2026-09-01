@@ -261,6 +261,13 @@ class MainActivity : AppCompatActivity() {
             }
         }
         browser.webViewClient = object : WebViewClient() {
+            override fun onPageFinished(view: WebView, url: String) {
+                view.evaluateJavascript(
+                    "window.FreedifyAndroid?.syncAudiobookLibrary?.(localStorage.getItem('freedify_audiobooks') || '[]')",
+                    null,
+                )
+            }
+
             override fun shouldOverrideUrlLoading(
                 view: WebView,
                 request: WebResourceRequest,
@@ -494,6 +501,7 @@ class MainActivity : AppCompatActivity() {
         audiobookSearchWebView = null
     }
 
+    @SuppressLint("MissingSuperCall")
     override fun onBackPressed() {
         val browser = webView
         if (browser == null) {
@@ -514,6 +522,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private inner class AndroidBridge {
+        @JavascriptInterface
+        fun syncAudiobookLibrary(payload: String) {
+            AudiobookStore.get(applicationContext).importLegacy(payload)
+        }
+
         @JavascriptInterface
         fun openApiKeySettings() {
             runOnUiThread { showSettingsDialog() }

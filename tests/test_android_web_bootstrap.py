@@ -71,17 +71,34 @@ class AndroidWebBootstrapTests(unittest.TestCase):
         integrations = (ROOT / "static" / "integrations.js").read_text(encoding="utf-8")
         self.assertIn("Check initial LB status only in the full desktop/web experience", integrations)
 
-    def test_android_player_uses_audiobook_seek_labels(self):
-        index = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
+    def test_native_android_player_and_auto_share_the_media_service(self):
+        manifest = (ROOT / "android/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
+        activity = (ROOT / "android/app/src/main/java/com/freedify/android/NativeMainActivity.kt").read_text(encoding="utf-8")
         service = (
             ROOT
             / "android/app/src/main/java/com/freedify/android/PlaybackService.kt"
         ).read_text(encoding="utf-8")
 
-        self.assertIn('android-seek-label">−15', index)
-        self.assertIn('android-seek-label">+15', index)
-        self.assertIn('"Back 15 seconds"', service)
-        self.assertIn('"Forward 15 seconds"', service)
+        self.assertIn('android:name=".NativeMainActivity"', manifest)
+        self.assertIn('android.media.browse.MediaBrowserService', manifest)
+        self.assertIn('com.google.android.gms.car.application', manifest)
+        self.assertIn("class PlaybackService : MediaBrowserServiceCompat()", service)
+        self.assertIn('browsable(CONTINUE_ID, "Continue listening"', service)
+        self.assertIn('items += browsable(BOOKS_ID, "My Books"', service)
+        self.assertIn("AudioManager.ACTION_AUDIO_BECOMING_NOISY", service)
+        self.assertIn("AudioAttributes.CONTENT_TYPE_SPEECH", service)
+        self.assertIn("intent.getBooleanExtra(EXTRA_RESTART, false)", service)
+        self.assertIn("private fun FullPlayer", activity)
+        self.assertIn("PlaybackService.setSpeed(speed)", activity)
+
+    def test_native_library_migrates_legacy_webview_books(self):
+        activity = (ROOT / "android/app/src/main/java/com/freedify/android/MainActivity.kt").read_text(encoding="utf-8")
+        store = (ROOT / "android/app/src/main/java/com/freedify/android/AudiobookStore.kt").read_text(encoding="utf-8")
+        data = (ROOT / "static/data.js").read_text(encoding="utf-8")
+
+        self.assertIn("fun syncAudiobookLibrary(payload: String)", activity)
+        self.assertIn("fun importLegacy(payload: String)", store)
+        self.assertIn("window.FreedifyAndroid?.syncAudiobookLibrary", data)
 
     def test_android_uses_full_size_adaptive_bookdebrid_icon(self):
         manifest = (

@@ -397,6 +397,11 @@ export function togglePodcastFavorite(podcast) {
 // ========== AUDIOBOOK FAVORITES ==========
 export function saveAudiobookFavorites() {
     localStorage.setItem('freedify_audiobooks', JSON.stringify(state.audiobookFavorites));
+    try {
+        window.FreedifyAndroid?.syncAudiobookLibrary?.(JSON.stringify(state.audiobookFavorites));
+    } catch (_) {
+        // Native library mirroring is best effort; browser builds have no bridge.
+    }
     markDirty('audiobook_favorites');
 }
 
