@@ -337,7 +337,7 @@ private fun BookDebridApp(model: BookDebridViewModel, openLegacy: () -> Unit) {
                 AppDestination.LIBRARY -> LibraryScreen(state.books, model)
                 AppDestination.SETTINGS -> SettingsScreen(model::saveApiKey, openLegacy)
             }
-            state.error?.let { message ->
+            (state.error ?: playback.error)?.let { message ->
                 Surface(
                     modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp),
                     color = MaterialTheme.colorScheme.errorContainer,

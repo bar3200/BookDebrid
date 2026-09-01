@@ -191,7 +191,7 @@ class PlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFocusCh
         when (focusChange) {
             AudioManager.AUDIOFOCUS_GAIN -> if (resumeAfterFocusGain) {
                 resumeAfterFocusGain = false
-                resumeNative()
+                startPlayerWithFocus()
             }
             AudioManager.AUDIOFOCUS_LOSS -> {
                 resumeAfterFocusGain = false
@@ -268,11 +268,14 @@ class PlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFocusCh
         mediaPlayer.setOnPreparedListener { prepared ->
             val target = (chapter.startMs() + resumeMs).coerceAtLeast(chapter.startMs())
             prepared.seekTo(target.coerceAtMost(prepared.duration.toLong()).toInt())
-            if (Build.VERSION.SDK_INT >= 23) prepared.playbackParams = prepared.playbackParams.setSpeed(_playback.value.speed)
-            if (requestAudioFocus()) prepared.start()
-            publishNativeState(resumeMs, chapter.durationMs(prepared.duration.toLong()), playing = prepared.isPlaying)
-            handler.removeCallbacks(progressTicker)
-            handler.post(progressTicker)
+            when (requestAudioFocus()) {
+                AudioManager.AUDIOFOCUS_REQUEST_GRANTED -> startPlayerWithFocus()
+                AudioManager.AUDIOFOCUS_REQUEST_DELAYED -> {
+                    resumeAfterFocusGain = true
+                    publishNativeState(resumeMs, chapter.durationMs(prepared.duration.toLong()), buffering = true)
+                }
+                else -> setError("Playback was paused because Android could not grant audio focus. Pause the other audio app and try again.")
+            }
         }
         mediaPlayer.setOnCompletionListener { playAdjacent(1) }
         mediaPlayer.setOnErrorListener { _, what, extra ->
@@ -295,11 +298,34 @@ class PlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFocusCh
             }
             return
         }
-        if (requestAudioFocus()) {
-            mediaPlayer.start()
-            publishNativeState(_playback.value.positionMs, _playback.value.durationMs, playing = true)
-            handler.post(progressTicker)
+        when (requestAudioFocus()) {
+            AudioManager.AUDIOFOCUS_REQUEST_GRANTED -> startPlayerWithFocus()
+            AudioManager.AUDIOFOCUS_REQUEST_DELAYED -> {
+                resumeAfterFocusGain = true
+                publishNativeState(_playback.value.positionMs, _playback.value.durationMs, buffering = true)
+            }
+            else -> setError("Playback was paused because Android could not grant audio focus. Pause the other audio app and try again.")
         }
+    }
+
+    private fun startPlayerWithFocus() {
+        val mediaPlayer = player ?: return
+        runCatching {
+            mediaPlayer.start()
+            val speed = _playback.value.speed
+            if (speed != 1f) mediaPlayer.playbackParams = mediaPlayer.playbackParams.setSpeed(speed)
+        }.onFailure {
+            setError(it.message ?: "Android could not start audiobook playback")
+            return
+        }
+        val chapter = currentChapter ?: return
+        publishNativeState(
+            _playback.value.positionMs,
+            chapter.durationMs(mediaPlayer.duration.toLong()),
+            playing = true,
+        )
+        handler.removeCallbacks(progressTicker)
+        handler.post(progressTicker)
     }
 
     private fun pauseNative(abandonFocus: Boolean = true) {
@@ -328,8 +354,8 @@ class PlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFocusCh
 
     private fun changeSpeed(speed: Float) {
         val safeSpeed = speed.coerceIn(0.5f, 3f)
-        if (Build.VERSION.SDK_INT >= 23) {
-            player?.let { it.playbackParams = it.playbackParams.setSpeed(safeSpeed) }
+        player?.takeIf { it.isPlaying }?.let { mediaPlayer ->
+            runCatching { mediaPlayer.playbackParams = mediaPlayer.playbackParams.setSpeed(safeSpeed) }
         }
         _playback.value = _playback.value.copy(speed = safeSpeed)
         persist(_playback.value.positionMs)
@@ -489,7 +515,7 @@ class PlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFocusCh
         refreshNotification()
     }
 
-    private fun requestAudioFocus(): Boolean {
+    private fun requestAudioFocus(): Int {
         val result = if (Build.VERSION.SDK_INT >= 26) {
             val request = audioFocusRequest ?: AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
                 .setAudioAttributes(
@@ -498,13 +524,14 @@ class PlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFocusCh
                 )
                 .setOnAudioFocusChangeListener(this)
                 .setWillPauseWhenDucked(true)
+                .setAcceptsDelayedFocusGain(true)
                 .build().also { audioFocusRequest = it }
             audioManager.requestAudioFocus(request)
         } else {
             @Suppress("DEPRECATION")
             audioManager.requestAudioFocus(this, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN)
         }
-        return result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+        return result
     }
 
     private fun abandonAudioFocus() {
