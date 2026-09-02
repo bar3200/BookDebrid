@@ -5,6 +5,7 @@ import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.net.Uri
@@ -108,13 +109,13 @@ class MainActivity : AppCompatActivity() {
             setBackgroundColor(Color.rgb(18, 18, 24))
         }
         container.addView(TextView(this).apply {
-            text = "Connect AllDebrid"
-            textSize = 26f
+            text = "BookDebrid"
+            textSize = 28f
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
         })
         container.addView(TextView(this).apply {
-            text = "Enter an AllDebrid API key to start the private backend on this device. The key is encrypted with Android Keystore and never added to the APK."
+            text = "Connect AllDebrid to search, save, and listen without running a separate server. Your API key is encrypted with Android Keystore and never added to the APK."
             textSize = 16f
             setTextColor(Color.LTGRAY)
             gravity = Gravity.CENTER
@@ -123,7 +124,11 @@ class MainActivity : AppCompatActivity() {
         val input = apiKeyInput()
         container.addView(input, matchWidthWrapHeight())
         container.addView(Button(this).apply {
-            text = "Save and start Freedify"
+            text = "Save and open my library"
+            isAllCaps = false
+            textSize = 16f
+            minHeight = (52 * resources.displayMetrics.density).toInt()
+            backgroundTintList = ColorStateList.valueOf(Color.rgb(99, 102, 241))
             setOnClickListener {
                 val key = input.text.toString().trim()
                 if (key.isBlank()) {
@@ -174,9 +179,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun apiKeyInput() = EditText(this).apply {
-        hint = "ALLDEBRID_API_KEY"
+        hint = "AllDebrid API key"
         inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
         isSingleLine = true
+        minHeight = (54 * resources.displayMetrics.density).toInt()
+        setTextColor(Color.WHITE)
+        setHintTextColor(Color.rgb(150, 150, 165))
+        backgroundTintList = ColorStateList.valueOf(Color.rgb(129, 140, 248))
     }
 
     private fun launchFreedify(apiKey: String) {
@@ -188,7 +197,7 @@ class MainActivity : AppCompatActivity() {
             onReady = { showWebView() },
             onError = { message ->
                 AlertDialog.Builder(this)
-                    .setTitle("Freedify could not start")
+                    .setTitle("BookDebrid could not start")
                     .setMessage(message)
                     .setPositiveButton("Edit API key") { _, _ -> showFirstRunScreen() }
                     .setCancelable(false)
@@ -252,6 +261,13 @@ class MainActivity : AppCompatActivity() {
             }
         }
         browser.webViewClient = object : WebViewClient() {
+            override fun onPageFinished(view: WebView, url: String) {
+                view.evaluateJavascript(
+                    "window.FreedifyAndroid?.syncAudiobookLibrary?.(localStorage.getItem('freedify_audiobooks') || '[]')",
+                    null,
+                )
+            }
+
             override fun shouldOverrideUrlLoading(
                 view: WebView,
                 request: WebResourceRequest,
@@ -415,6 +431,10 @@ class MainActivity : AppCompatActivity() {
                         try { id = new URL(id, location.href).pathname.replace(/^\/+|\/+$/g, ''); } catch (_) {}
                         const image = post.querySelector('img');
                         const content = post.querySelector('.postContent');
+                        const genres = [...post.querySelectorAll('a[href*="/genre/"], a[href*="/genres/"], a[href*="/category/"], a[href*="?cat="]')]
+                            .map(anchor => (anchor.textContent || '').trim())
+                            .filter((genre, index, all) => genre && genre.toLowerCase() !== 'audiobook' && all.indexOf(genre) === index)
+                            .slice(0, 8);
                         return {
                             id,
                             title,
@@ -422,6 +442,7 @@ class MainActivity : AppCompatActivity() {
                             url: link.href,
                             cover_image: image?.src || null,
                             description: (content?.innerText || '').trim().slice(0, 203),
+                            genres,
                             source: 'audiobookbay'
                         };
                     }).filter(item => item?.id && item?.title);
@@ -480,6 +501,7 @@ class MainActivity : AppCompatActivity() {
         audiobookSearchWebView = null
     }
 
+    @SuppressLint("MissingSuperCall")
     override fun onBackPressed() {
         val browser = webView
         if (browser == null) {
@@ -500,6 +522,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private inner class AndroidBridge {
+        @JavascriptInterface
+        fun syncAudiobookLibrary(payload: String) {
+            AudiobookStore.get(applicationContext).importLegacy(payload)
+        }
+
         @JavascriptInterface
         fun openApiKeySettings() {
             runOnUiThread { showSettingsDialog() }

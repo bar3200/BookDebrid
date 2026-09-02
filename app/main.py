@@ -478,8 +478,10 @@ async def search(
                         "results": [{
                             "id": details["id"],
                             "title": details["title"],
+                            "author": details.get("author"),
                             "cover_image": details.get("cover_image"),
                             "description": details.get("description", ""),
+                            "genres": details.get("genres", []),
                             "source": "audiobookbay"
                         }],
                         "query": q,
@@ -1810,8 +1812,15 @@ async def proxy_image(url: str):
         raise HTTPException(status_code=400, detail="No URL provided")
     
     try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(url, follow_redirects=True)
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            resp = await client.get(
+                url,
+                follow_redirects=True,
+                headers={
+                    "User-Agent": "Mozilla/5.0 (Android) BookDebrid/1.5",
+                    "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+                },
+            )
             if resp.status_code != 200:
                 raise HTTPException(status_code=resp.status_code, detail="Failed to fetch image")
             
@@ -1888,6 +1897,43 @@ async def get_goodreads_book_info(
     except Exception as e:
         logger.error(f"Goodreads lookup error: {e}")
         return {"found": False, "message": str(e)}
+
+
+@app.get("/api/audiobooks/discover")
+async def discover_audiobooks(
+    title: str = Query(..., min_length=1, description="Book title"),
+    author: str = Query("", description="Book author"),
+    genres: str = Query("", description="Comma-separated known genres"),
+    limit: int = Query(12, ge=1, le=24),
+):
+    """Return catalog metadata and books related by subject."""
+    try:
+        from app.book_discovery_service import discover_similar_books
+
+        genre_list = [value.strip() for value in genres.split(",") if value.strip()]
+        return await discover_similar_books(title, author, genre_list, limit)
+    except httpx.HTTPError as error:
+        logger.error("Book discovery lookup error: %s", error)
+        raise HTTPException(status_code=502, detail="Book discovery service is temporarily unavailable")
+    except Exception as error:
+        logger.error("Book discovery error: %s", error)
+        raise HTTPException(status_code=500, detail=str(error))
+
+
+@app.get("/api/audiobooks/catalog/search")
+async def search_audiobook_catalog(
+    q: str = Query(..., min_length=1, description="Catalog search query"),
+    mode: str = Query("title", pattern="^(title|author|genre)$"),
+    limit: int = Query(20, ge=1, le=40),
+):
+    """Search book metadata without depending on AudiobookBay availability."""
+    try:
+        from app.book_discovery_service import search_catalog_books
+
+        return {"results": await search_catalog_books(q, mode, limit)}
+    except httpx.HTTPError as error:
+        logger.error("Book catalog search error: %s", error)
+        raise HTTPException(status_code=502, detail="Book catalog search is temporarily unavailable")
 
 # ========== AUDIOBOOKS & DEBRID ENDPOINTS ==========
 

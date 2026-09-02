@@ -41,7 +41,7 @@ import {
     renderMyPodcastsView, renderMyBooksView, showLyricsModal,
     showMusicVideo, initPlaylistExportImport, initAudiobooks,
     openAudiobook,
-} from './views.js';
+} from './views.js?t=1788022800';
 import {
     updateMediaSession, submitNowPlaying, submitScrobble,
     updateMiniPlayer, toggleMiniPlayer, openAddToPlaylistModal,
@@ -401,6 +401,12 @@ window.FreedifyAndroidNavigation = {
             backBtn?.click();
             return true;
         }
+        const currentResults = document.getElementById('results-container');
+        if (document.documentElement.classList.contains('android-app') && currentResults?.dataset.androidView !== 'library') {
+            searchInput.value = '';
+            renderMyBooksView();
+            return true;
+        }
         return false;
     },
 };
@@ -428,20 +434,56 @@ window.addEventListener('beforeunload', () => {
 });
 
 // ========== INIT ==========
+const isAndroidApp = document.documentElement.classList.contains('android-app');
 showEmptyState();
 
-if (document.documentElement.classList.contains('android-app')) {
+if (isAndroidApp) {
     state.searchType = 'audiobook';
     document.querySelectorAll('.type-btn, .type-btn-menu').forEach((button) => {
         button.classList.toggle('active', button.dataset.type === 'audiobook');
     });
-    searchInput.placeholder = 'Search audiobooks or paste an AudiobookBay link';
+    searchInput.placeholder = window.matchMedia('(max-width: 380px)').matches
+        ? 'Search audiobooks'
+        : 'Search title, author, or paste a link';
+    const libraryButton = document.getElementById('android-library-btn');
+    const showAndroidLibrary = () => {
+        hideLoading();
+        document.getElementById('error-message')?.classList.add('hidden');
+        document.querySelectorAll('.book-info-modal:not(.hidden), .album-modal:not(.hidden), .modal:not(.hidden)')
+            .forEach(element => element.classList.add('hidden'));
+        detailView?.classList.add('hidden');
+        resultsSection?.classList.remove('hidden');
+        renderMyBooksView();
+        searchInput?.focus({ preventScroll: true });
+        searchInput?.blur();
+    };
+    libraryButton?.addEventListener('click', showAndroidLibrary);
+    window.FreedifyAndroidNavigation = window.FreedifyAndroidNavigation || {};
+    window.FreedifyAndroidNavigation.goHome = showAndroidLibrary;
     renderMyBooksView();
+    const prevButton = document.getElementById('prev-btn');
+    const nextButton = document.getElementById('next-btn');
+    if (prevButton) {
+        prevButton.title = 'Back 15 seconds';
+        prevButton.setAttribute('aria-label', 'Back 15 seconds');
+    }
+    if (nextButton) {
+        nextButton.title = 'Forward 15 seconds';
+        nextButton.setAttribute('aria-label', 'Forward 15 seconds');
+    }
 }
 
 // Deferred init
 setTimeout(() => {
     loadQueueFromStorage();
+    if (isAndroidApp && state.queue.some(track => track?.source !== 'audiobook')) {
+        const currentTrackId = state.queue[state.currentIndex]?.id;
+        state.queue = state.queue.filter(track => track?.source === 'audiobook');
+        const restoredIndex = state.queue.findIndex(track => track.id === currentTrackId);
+        state.currentIndex = restoredIndex >= 0 ? restoredIndex : (state.queue.length ? 0 : -1);
+        updateQueueUI();
+        if (state.currentIndex >= 0) updatePlayerUI();
+    }
     audioPlayer.volume = state.volume;
     audioPlayer2.volume = state.volume;
     if (volumeSlider) {
@@ -450,20 +492,22 @@ setTimeout(() => {
 }, 100);
 
 // Init deferred features
-initPlaylistExportImport();
 initAudiobooks();
-initLocalFiles();
-initGoogleDriveSync();
-initDJMode();
-initVisualizer();
-initConcertAlerts();
-initAIRadio();
-initAIAssistant();
-initSpotifyOAuth();
 initDataExportImport();
-initSync();
-initSyncUI();
-initCloudSync();
+if (!isAndroidApp) {
+    initPlaylistExportImport();
+    initLocalFiles();
+    initGoogleDriveSync();
+    initDJMode();
+    initVisualizer();
+    initConcertAlerts();
+    initAIRadio();
+    initAIAssistant();
+    initSpotifyOAuth();
+    initSync();
+    initSyncUI();
+    initCloudSync();
+}
 
 // Window globals for cloud sync UI
 window.cloudLogin = cloudLogin;

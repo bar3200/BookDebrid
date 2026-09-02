@@ -188,7 +188,13 @@ class AllDebridServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([item["name"] for item in result["audio_files"]], ["01.mp3", "02.m4b"])
         self.assertEqual(result["audio_files"][0]["source_link"], "https://alldebrid.com/f/one")
         self.assertEqual(result["audio_files"][0]["link"], "https://alldebrid.com/f/one")
-        self.assertFalse(result["chapter_scan"]["attempted"])
+        # A single M4B is scanned even when the transfer also contains another
+        # audio file; scan failure remains non-fatal for file enumeration.
+        self.assertTrue(result["chapter_scan"]["attempted"])
+        self.assertEqual(
+            result["chapter_scan"]["error"],
+            "Embedded chapter metadata could not be read",
+        )
 
     @patch("app.m4b_chapter_service.extract_m4b_chapters")
     @patch("app.alldebrid_service.unlock_link", new_callable=AsyncMock)
@@ -296,6 +302,33 @@ class AllDebridServiceTests(unittest.IsolatedAsyncioTestCase):
         request.assert_awaited_once_with(
             "/v4/magnet/delete", method="POST", data={"id": "42"}
         )
+
+    @patch("app.alldebrid_service._make_request", new_callable=AsyncMock)
+    async def test_string_magnet_error_becomes_http_error(self, request):
+        request.return_value = {
+            "magnets": [{"error": "MAGNET_MUST_BE_PREMIUM"}]
+        }
+
+        with self.assertRaises(alldebrid_service.HTTPException) as raised:
+            await alldebrid_service.create_transfer("magnet:?xt=urn:btih:test")
+
+        self.assertEqual(raised.exception.status_code, 400)
+        self.assertIn("MAGNET_MUST_BE_PREMIUM", raised.exception.detail)
+
+    def test_file_tree_ignores_string_entries(self):
+        files = alldebrid_service._flatten_files([
+            "unexpected",
+            {
+                "n": "Book",
+                "e": [
+                    "bad child",
+                    {"n": "Chapter 1.m4b", "l": "https://alldebrid.com/f/1"},
+                ],
+            },
+        ])
+
+        self.assertEqual(len(files), 1)
+        self.assertEqual(files[0]["path"], "Book/Chapter 1.m4b")
 
 
 if __name__ == "__main__":

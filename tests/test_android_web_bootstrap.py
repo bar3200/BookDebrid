@@ -33,6 +33,239 @@ class AndroidWebBootstrapTests(unittest.TestCase):
         self.assertIn("fun searchAudiobookBay(requestId: String, query: String, page: Int)", activity)
         self.assertIn("document.querySelector('input[name=\"s\"]')", activity)
         self.assertIn("document.querySelectorAll('div.post')", activity)
+        self.assertIn("const genres = [...post.querySelectorAll", activity)
+        self.assertIn("genres,", activity)
+
+    def test_audiobook_discovery_controls_are_in_web_ui(self):
+        index = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
+        views = (ROOT / "static" / "views.js").read_text(encoding="utf-8")
+
+        self.assertIn('id="book-info-similar-btn"', index)
+        self.assertIn("/api/audiobooks/discover", views)
+        self.assertIn("audiobook-genre-chip", views)
+        self.assertIn("fetchGoodreadsData(book);", views)
+        self.assertIn("goodreads_rating_count", views)
+
+    def test_android_shell_is_audiobook_focused(self):
+        index = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
+        app = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
+        styles = (ROOT / "static" / "styles.css").read_text(encoding="utf-8")
+
+        self.assertIn('id="android-library-btn"', index)
+        self.assertIn('aria-label="Go to My Books"', index)
+        self.assertIn("document.title = 'BookDebrid'", index)
+        self.assertIn("content: 'BookDebrid'", styles)
+        self.assertIn(".android-app .android-library-btn span", styles)
+        self.assertIn("? 'Search audiobooks'", app)
+        self.assertIn('search-type-selector android-desktop-only', index)
+        self.assertIn('class="settings-section android-desktop-only">\n                        <h3 class="settings-section-title">Local Files', index)
+        self.assertIn("if (!isAndroidApp) {", app)
+        self.assertIn("track?.source === 'audiobook'", app)
+        self.assertIn("currentResults?.dataset.androidView !== 'library'", app)
+        self.assertIn("FreedifyAndroidNavigation.goHome", app)
+        self.assertIn("document.getElementById('error-message')?.classList.add('hidden')", app)
+        self.assertIn(".android-app .search-type-selector", styles)
+        self.assertIn(".android-app .settings-modal-content", styles)
+        self.assertIn("keep its SDK traffic out of the audiobook APK", index)
+
+        integrations = (ROOT / "static" / "integrations.js").read_text(encoding="utf-8")
+        self.assertIn("Check initial LB status only in the full desktop/web experience", integrations)
+
+    def test_native_android_player_and_auto_share_the_media_service(self):
+        manifest = (ROOT / "android/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
+        activity = (ROOT / "android/app/src/main/java/com/freedify/android/NativeMainActivity.kt").read_text(encoding="utf-8")
+        service = (
+            ROOT
+            / "android/app/src/main/java/com/freedify/android/PlaybackService.kt"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn('android:name=".NativeMainActivity"', manifest)
+        self.assertIn('android.media.browse.MediaBrowserService', manifest)
+        self.assertIn('com.google.android.gms.car.application', manifest)
+        self.assertIn("class PlaybackService : MediaBrowserServiceCompat()", service)
+        self.assertIn('browsable(CONTINUE_ID, "Continue listening"', service)
+        self.assertIn('items += browsable(BOOKS_ID, "My Books"', service)
+        self.assertIn("ExoPlayer.Builder(this).build()", service)
+        self.assertIn("setHandleAudioBecomingNoisy(true)", service)
+        self.assertIn("C.AUDIO_CONTENT_TYPE_SPEECH", service)
+        self.assertIn("setAudioAttributes(", service)
+        self.assertIn("true,", service)
+        self.assertIn("playbackErrorMessage(error)", service)
+        self.assertIn("intent.getBooleanExtra(EXTRA_RESTART, false)", service)
+        self.assertIn("private fun FullPlayer", activity)
+        self.assertIn("PlaybackService.setSpeed(nextSpeed)", activity)
+
+    def test_native_library_migrates_legacy_webview_books(self):
+        activity = (ROOT / "android/app/src/main/java/com/freedify/android/MainActivity.kt").read_text(encoding="utf-8")
+        store = (ROOT / "android/app/src/main/java/com/freedify/android/AudiobookStore.kt").read_text(encoding="utf-8")
+        data = (ROOT / "static/data.js").read_text(encoding="utf-8")
+
+        self.assertIn("fun syncAudiobookLibrary(payload: String)", activity)
+        self.assertIn("fun importLegacy(payload: String)", store)
+        self.assertIn("window.FreedifyAndroid?.syncAudiobookLibrary", data)
+
+    def test_native_book_covers_have_network_loader_and_local_proxy(self):
+        gradle = (ROOT / "android/app/build.gradle.kts").read_text(encoding="utf-8")
+        api = (ROOT / "android/app/src/main/java/com/freedify/android/BookDebridApi.kt").read_text(encoding="utf-8")
+        activity = (ROOT / "android/app/src/main/java/com/freedify/android/NativeMainActivity.kt").read_text(encoding="utf-8")
+
+        self.assertIn("coil-network-okhttp", gradle)
+        self.assertIn("fun imageUrl(rawUrl: String)", api)
+        self.assertIn("/api/proxy_image?url=", api)
+        self.assertIn("BookDebridApi.imageUrl(url)", activity)
+        self.assertIn("contentScale = ContentScale.Crop", activity)
+        self.assertIn("aspectRatio(2f / 3f)", activity)
+
+    def test_native_startup_and_playback_show_platform_loading_ui(self):
+        gradle = (ROOT / "android/app/build.gradle.kts").read_text(encoding="utf-8")
+        manifest = (ROOT / "android/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
+        themes = (ROOT / "android/app/src/main/res/values/themes.xml").read_text(encoding="utf-8")
+        activity = (ROOT / "android/app/src/main/java/com/freedify/android/NativeMainActivity.kt").read_text(encoding="utf-8")
+        service = (ROOT / "android/app/src/main/java/com/freedify/android/PlaybackService.kt").read_text(encoding="utf-8")
+
+        self.assertIn("core-splashscreen", gradle)
+        self.assertIn('android:theme="@style/Theme.BookDebrid.Splash"', manifest)
+        self.assertIn('name="Theme.BookDebrid.Splash"', themes)
+        self.assertIn("installSplashScreen()", activity)
+        self.assertGreaterEqual(activity.count("if (playback.buffering)"), 2)
+        self.assertIn("mediaPlayer.playbackState == Player.STATE_BUFFERING", service)
+
+    def test_native_library_prefers_descriptive_chapter_metadata(self):
+        api = (ROOT / "android/app/src/main/java/com/freedify/android/BookDebridApi.kt").read_text(encoding="utf-8")
+        store = (ROOT / "android/app/src/main/java/com/freedify/android/AudiobookStore.kt").read_text(encoding="utf-8")
+
+        self.assertIn('listOf("title", "name", "label")', api)
+        self.assertIn("val transferId = book.debridId ?: run", api)
+        self.assertIn("chapterTitleScore(candidate.chapters) > chapterTitleScore(saved.chapters)", store)
+        self.assertIn("chapters = candidate.chapters", store)
+
+    def test_native_book_details_prioritize_resume_and_discovery(self):
+        activity = (ROOT / "android/app/src/main/java/com/freedify/android/NativeMainActivity.kt").read_text(encoding="utf-8")
+        store = (ROOT / "android/app/src/main/java/com/freedify/android/AudiobookStore.kt").read_text(encoding="utf-8")
+
+        self.assertIn('"Resume listening"', activity)
+        self.assertIn('Text("Start from the beginning")', activity)
+        self.assertIn('var chaptersExpanded by remember(book.id)', activity)
+        self.assertIn('Text("Books like this"', activity)
+        self.assertLess(activity.index('Text("Books like this"'), activity.index('Text("Chapters"'))
+        self.assertIn('Text("Manage this book")', activity)
+        self.assertIn("fun snapshotForBook(bookId: String)", store)
+        self.assertIn('.putString("book_chapter:$bookId", chapterId)', store)
+        self.assertIn("primary = Color(0xFF8AB4FF)", activity)
+
+    def test_native_search_has_field_specific_modes(self):
+        activity = (ROOT / "android/app/src/main/java/com/freedify/android/NativeMainActivity.kt").read_text(encoding="utf-8")
+        api = (ROOT / "android/app/src/main/java/com/freedify/android/BookDebridApi.kt").read_text(encoding="utf-8")
+
+        self.assertIn("enum class AudiobookSearchMode", activity)
+        for mode in ('TITLE("Title"', 'AUTHOR("Author"', 'GENRE("Genre"', 'URL("URL"'):
+            self.assertIn(mode, activity)
+        self.assertIn('Text("Search by"', activity)
+        self.assertIn("FilterChip(", activity)
+        self.assertIn("rankSearchResults(results, query, mode)", activity)
+        self.assertIn("Paste a complete AudiobookBay book URL", activity)
+        self.assertIn("searchWithFallbacks(query, mode)", activity)
+        self.assertIn("searchAudiobookBay(query)", activity)
+        self.assertIn("serverResults.isNotEmpty()", activity)
+        self.assertIn("NativeAudiobookSearch.search(query)", activity)
+        self.assertIn("suspend fun catalogSearch", api)
+        self.assertIn('AudiobookSearchMode.GENRE -> "genre"', api)
+        self.assertIn("private fun Audiobook.isCatalogBook()", activity)
+        self.assertIn("findAvailabilityMatch(book, it)", activity)
+        self.assertIn("No downloadable AudiobookBay match was found", activity)
+        self.assertIn("!catalogBook.isCatalogBook()", activity)
+
+    def test_native_home_has_personalized_recommendations(self):
+        activity = (ROOT / "android/app/src/main/java/com/freedify/android/NativeMainActivity.kt").read_text(encoding="utf-8")
+
+        self.assertIn("homeRecommendations: List<Audiobook>", activity)
+        self.assertIn("private fun loadHomeRecommendations()", activity)
+        self.assertIn('"Books you might like"', activity)
+        self.assertIn('"Inspired by ${state.recommendationSeedTitle}"', activity)
+        recommendation_section = activity[activity.index('"Books you might like"'):activity.index("private fun SearchScreen")]
+        self.assertNotIn("Card(", recommendation_section)
+        self.assertIn("LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp))", recommendation_section)
+        self.assertIn("book.isCatalogBook()", activity)
+        self.assertIn('searchAudiobookBay("${book.title} ${book.author}")', activity)
+
+    def test_native_genre_search_has_live_autocomplete(self):
+        activity = (ROOT / "android/app/src/main/java/com/freedify/android/NativeMainActivity.kt").read_text(encoding="utf-8")
+        models = (ROOT / "android/app/src/main/java/com/freedify/android/AudiobookModels.kt").read_text(encoding="utf-8")
+
+        self.assertIn("CANONICAL_AUDIOBOOK_GENRES", activity)
+        self.assertIn("internal val CANONICAL_AUDIOBOOK_GENRES", models)
+        self.assertIn('"Science Fiction"', models)
+        self.assertIn('"Suspense"'.lower(), models.lower())
+        self.assertNotIn('"English literature"', models)
+        self.assertIn("normalizeAudiobookGenres", models)
+        self.assertIn('"Full Cast"', models)
+        self.assertIn('"Genre & format suggestions"', activity)
+        self.assertIn("it.contains(typedGenre, ignoreCase = true)", activity)
+        self.assertIn("model.setSearchQuery(genre)", activity)
+        self.assertIn("DropdownMenu(", activity)
+        self.assertIn("searchModeExpanded", activity)
+
+    def test_native_large_text_layout_and_chapter_refresh_are_safe(self):
+        activity = (ROOT / "android/app/src/main/java/com/freedify/android/NativeMainActivity.kt").read_text(encoding="utf-8")
+        playback = (ROOT / "android/app/src/main/java/com/freedify/android/PlaybackService.kt").read_text(encoding="utf-8")
+
+        self.assertIn("DropdownMenu(", activity)
+        self.assertIn('"Book details"', activity)
+        self.assertIn('"Manage this book"', activity)
+        self.assertIn("cleanAudiobookDescription(book.description)", activity)
+        self.assertIn("BoxWithConstraints(Modifier.fillMaxWidth())", activity)
+        self.assertIn("maxWidth < 340.dp", activity)
+        self.assertIn("preserveDescriptiveChapterTitles", activity)
+        self.assertIn("chapter.copy(title = prior.title)", activity)
+        self.assertIn("LegacyAudiobookImporter.importSavedLibrary()", activity)
+        self.assertIn("refreshDownload(rescan = true)", activity)
+        self.assertIn('"Rescan chapter metadata"', activity)
+        self.assertIn("chapterScan?.optBoolean(\"attempted\")", (ROOT / "android/app/src/main/java/com/freedify/android/BookDebridApi.kt").read_text(encoding="utf-8"))
+        api = (ROOT / "android/app/src/main/java/com/freedify/android/BookDebridApi.kt").read_text(encoding="utf-8")
+        self.assertIn('chapterScan.isNull("error")', api)
+        self.assertIn('it == "null"', api)
+        self.assertIn("selectedId?.let(store::book)", activity)
+        importer = (ROOT / "android/app/src/main/java/com/freedify/android/LegacyAudiobookImporter.kt").read_text(encoding="utf-8")
+        self.assertIn("localStorage.getItem('freedify_audiobooks')", importer)
+        self.assertIn("importLegacy(payload)", importer)
+        self.assertIn("chapterDisplayTitle(book, chapter)", playback)
+        self.assertIn("if (state.selectedBook != null) {\n                TopAppBar(", activity)
+        self.assertNotIn('state.selectedBook?.title ?: "BookDebrid"', activity)
+
+    def test_full_player_uses_large_filled_controls(self):
+        activity = (ROOT / "android/app/src/main/java/com/freedify/android/NativeMainActivity.kt").read_text(encoding="utf-8")
+
+        self.assertIn("FilledTonalIconButton(", activity)
+        self.assertIn("FilledIconButton(onClick = PlaybackService::toggle", activity)
+        self.assertIn("Modifier.size(82.dp)", activity)
+        self.assertIn("Modifier.size(60.dp)", activity)
+        self.assertIn('"Playback speed: ${playback.speed}×"', activity)
+        self.assertIn("Modifier.weight(1f).fillMaxWidth()", activity)
+
+    def test_android_uses_full_size_adaptive_bookdebrid_icon(self):
+        manifest = (
+            ROOT / "android/app/src/main/AndroidManifest.xml"
+        ).read_text(encoding="utf-8")
+        adaptive = (
+            ROOT / "android/app/src/main/res/mipmap-anydpi-v26/ic_bookdebrid.xml"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn('android:icon="@mipmap/ic_bookdebrid"', manifest)
+        self.assertIn('android:roundIcon="@mipmap/ic_bookdebrid_round"', manifest)
+        self.assertIn('@color/bookdebrid_icon_background', adaptive)
+        self.assertIn('@drawable/ic_bookdebrid_foreground', adaptive)
+        self.assertTrue((ROOT / "android/app/src/main/res/drawable-xxxhdpi/ic_bookdebrid_foreground.png").is_file())
+
+    def test_ui_qa_export_contains_display_data_without_debrid_secrets(self):
+        activity = (ROOT / "android/app/src/main/java/com/freedify/android/NativeMainActivity.kt").read_text(encoding="utf-8")
+        exporter = (ROOT / "android/app/src/main/java/com/freedify/android/UiQaExport.kt").read_text(encoding="utf-8")
+
+        self.assertIn('"Export UI QA data"', activity)
+        self.assertIn("ActivityResultContracts.CreateDocument", activity)
+        for field in ('"font_scale"', '"width_px"', '"books"', '"chapters"', '"cover_url"'):
+            self.assertIn(field, exporter)
+        for secret in ('"api_key"', '"magnet_link"', '"debrid_id"', '"source_id"'):
+            self.assertNotIn(secret, exporter)
 
 
 if __name__ == "__main__":

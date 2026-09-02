@@ -66,6 +66,10 @@ html.android-app {
     display: none !important;
 }
 
+.android-app span.android-only {
+    display: inline-flex !important;
+}
+
 html.android-app body {
     background:
         radial-gradient(circle at 15% -10%, rgba(99, 102, 241, 0.22), transparent 36%),
@@ -94,6 +98,8 @@ html.android-app body {
 }
 
 .android-app .logo {
+    min-width: 0;
+    flex: 0 1 auto;
     font-size: 1.2rem;
     letter-spacing: -0.03em;
 }
@@ -109,7 +115,17 @@ html.android-app body {
     filter: none;
 }
 
+.android-app .brand-text {
+    font-size: 0;
+}
+
+.android-app .brand-text::after {
+    content: 'BookDebrid';
+    font-size: 1.16rem;
+}
+
 .android-app .logo::before {
+    flex: 0 0 28px;
     content: '';
     width: 28px;
     height: 28px;
@@ -131,15 +147,85 @@ html.android-app body {
     background: rgba(255, 255, 255, 0.055);
 }
 
+.android-app .header-actions {
+    flex: 0 0 auto;
+    gap: 8px;
+}
+
+.android-app .android-library-btn {
+    min-height: 42px;
+    padding: 0 15px;
+    border: 1px solid rgba(129, 140, 248, 0.3);
+    border-radius: 999px;
+    background: rgba(99, 102, 241, 0.13);
+    color: #dfe2ff;
+    font-size: 0.82rem;
+    font-weight: 700;
+    align-items: center;
+    gap: 7px;
+    flex-wrap: nowrap;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+.android-app .android-library-btn svg {
+    width: 21px;
+    height: 21px;
+    flex: 0 0 21px;
+}
+
+.android-app .settings-btn svg {
+    width: 23px;
+    height: 23px;
+}
+
+.android-app .android-library-btn:active {
+    transform: scale(0.96);
+}
+
 .android-app .settings-btn:active {
     transform: scale(0.94);
     background: rgba(129, 140, 248, 0.2);
 }
 
 .android-app .search-section {
-    padding: 10px 12px 8px;
+    position: relative;
+    z-index: 19;
+    flex-shrink: 0;
+    padding: 10px 12px 12px;
     background: linear-gradient(180deg, rgba(9, 9, 18, 0.92), rgba(9, 9, 18, 0.65));
     border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.android-app .search-container {
+    display: block !important;
+    visibility: visible !important;
+}
+
+.android-app .audiobook-discovery-warning {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 12px 0 18px;
+    padding: 14px;
+    border: 1px solid rgba(245, 158, 11, 0.28);
+    border-radius: 16px;
+    background: rgba(245, 158, 11, 0.09);
+}
+
+.android-app .audiobook-discovery-warning p {
+    margin: 0;
+    color: #fde68a;
+}
+
+.android-app .audiobook-discovery-warning button {
+    flex: 0 0 auto;
+}
+
+.android-app .search-type-selector,
+.android-app #search-more-menu {
+    display: none !important;
 }
 
 .android-app .search-input {
@@ -216,6 +302,25 @@ html.android-app body {
     gap: 12px;
 }
 
+.android-app .audiobook-search-card-wrapper,
+.android-app .book-fav-item {
+    min-width: 0;
+}
+
+.android-app .audiobook-search-card-wrapper .album-card-art,
+.android-app .book-fav-item > img {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 2 / 3;
+    object-fit: cover;
+}
+
+.android-app .book-fav-item .podcast-fav-btn {
+    width: 42px;
+    height: 42px;
+    opacity: 1;
+}
+
 .android-app .album-card,
 .android-app .dashboard-card {
     border: 1px solid rgba(255, 255, 255, 0.07);
@@ -255,6 +360,59 @@ html.android-app body {
     background: rgba(255, 255, 255, 0.035);
 }
 
+.android-app .track-item .track-actions {
+    flex: 0 0 auto;
+}
+
+.android-app .track-name,
+.android-app .track-artist {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.android-app .detail-view {
+    padding-top: var(--safe-top);
+    padding-bottom: calc(116px + var(--safe-bottom));
+}
+
+.android-app .detail-header {
+    min-height: 58px;
+    padding: 8px 12px;
+    background: rgba(15, 15, 25, 0.96);
+}
+
+.android-app .detail-actions {
+    display: none;
+}
+
+.android-app .back-btn {
+    min-height: 44px;
+    padding: 8px 12px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.055);
+}
+
+.android-app .detail-info {
+    padding: 14px 16px;
+    background: rgba(255, 255, 255, 0.025);
+}
+
+.android-app .detail-art {
+    width: 76px;
+    height: 114px;
+    border-radius: 10px;
+}
+
+.android-app .detail-name {
+    text-align: left;
+    white-space: normal;
+}
+
+.android-app .detail-tracks {
+    padding: 10px 12px;
+}
+
 .android-app .album-modal,
 .android-app .book-info-modal {
     padding: 0;
@@ -281,6 +439,52 @@ html.android-app body {
     background: linear-gradient(165deg, #1b1b2b 0%, #101019 58%);
     box-shadow: 0 -20px 60px rgba(0, 0, 0, 0.45);
     animation: androidSheetIn 0.24s ease-out;
+}
+
+.android-app .book-info-header {
+    align-items: flex-start;
+}
+
+.android-app .book-info-art {
+    width: 112px;
+    height: 168px;
+}
+
+.android-app .book-info-meta {
+    justify-content: flex-start;
+    padding-top: 6px;
+}
+
+.android-app .book-info-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+}
+
+.android-app .book-info-actions .album-action-btn {
+    width: 100%;
+    min-width: 0;
+    padding-inline: 10px;
+}
+
+.android-app #book-info-play-btn,
+.android-app #book-info-delete-btn {
+    grid-column: 1 / -1;
+}
+
+.android-app .book-info-tabs {
+    position: sticky;
+    top: -22px;
+    z-index: 2;
+    margin-inline: -4px;
+    padding-top: 8px;
+    background: #141420;
+}
+
+.android-app .book-info-tab {
+    flex: 1;
+    min-height: 46px;
+    padding: 10px 8px;
 }
 
 .android-app .book-info-content {
@@ -366,10 +570,28 @@ html.android-app body {
 .android-app .album-action-btn,
 .android-app #audiobook-fav-btn,
 .android-app .btn-secondary {
+    display: inline-flex;
+    max-width: 100%;
+    min-width: 0;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
     min-height: 50px;
     padding: 12px 16px;
     border-radius: 15px;
     font-size: 0.92rem;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+    text-align: center;
+    white-space: normal;
+}
+
+.android-app .album-action-btn svg,
+.android-app #audiobook-fav-btn svg,
+.android-app .btn-secondary svg {
+    width: 22px;
+    height: 22px;
+    flex: 0 0 22px;
 }
 
 .android-app #audiobook-fav-btn,
@@ -408,6 +630,114 @@ html.android-app body {
     line-height: 1.65;
 }
 
+.android-app .settings-modal {
+    align-items: flex-end;
+    padding: 0;
+    background: rgba(3, 3, 8, 0.72);
+}
+
+.android-app .settings-modal-content {
+    width: 100%;
+    max-width: none;
+    max-height: 94dvh;
+    border-radius: 26px 26px 0 0;
+    border-bottom: 0;
+    background: linear-gradient(165deg, #1b1b2b 0%, #101019 58%);
+}
+
+.android-app .settings-modal-header {
+    min-height: 62px;
+    padding: 12px 18px;
+}
+
+.android-app .settings-close {
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.07);
+}
+
+.android-app .settings-modal-body {
+    gap: 14px;
+    padding: 14px 14px calc(22px + var(--safe-bottom));
+}
+
+.android-app .settings-section {
+    gap: 7px;
+    padding: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.035);
+}
+
+.android-app .settings-item {
+    min-height: 48px;
+    border-radius: 12px;
+}
+
+.android-app .settings-theme-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.android-app .theme-option {
+    min-height: 46px;
+    display: flex;
+    align-items: center;
+}
+
+.android-app .queue-section {
+    top: var(--safe-top);
+    bottom: 0;
+    max-height: none;
+    padding-bottom: calc(112px + var(--safe-bottom));
+    border-radius: 0;
+    background: rgba(13, 13, 22, 0.98);
+}
+
+.android-app .queue-header {
+    min-height: 60px;
+    padding: 10px 14px;
+}
+
+.android-app .queue-header h3 {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.android-app .queue-controls .export-dropdown-container,
+.android-app #queue-save-playlist-btn,
+.android-app #queue-clear,
+.android-app .crossfade-toggle,
+.android-app .queue-select-cb,
+.android-app .queue-heart-btn,
+.android-app .queue-remove-btn {
+    display: none !important;
+}
+
+.android-app .queue-close-btn {
+    width: 44px;
+    height: 44px;
+    border-radius: 14px;
+}
+
+.android-app .queue-container {
+    padding: 10px 12px 22px;
+}
+
+.android-app .queue-item {
+    min-height: 64px;
+    border-bottom-color: rgba(255, 255, 255, 0.06);
+}
+
+.android-app .detail-view .track-actions button,
+.android-app .detail-view .queue-btn,
+.android-app .detail-view .star-btn,
+.android-app .detail-view .info-btn {
+    display: none !important;
+}
+
 .android-app .player-bar {
     padding: 9px 12px calc(9px + var(--safe-bottom));
     background: rgba(18, 18, 28, 0.9);
@@ -424,6 +754,8 @@ html.android-app body {
 }
 
 .android-app .player-info {
+    min-width: 0;
+    flex: 1 1 auto;
     width: auto;
     margin: 0;
     padding: 0;
@@ -438,6 +770,7 @@ html.android-app body {
 }
 
 .android-app .player-details {
+    min-width: 0;
     max-width: none;
 }
 
@@ -448,6 +781,7 @@ html.android-app body {
 }
 
 .android-app .player-controls-primary {
+    flex: 0 0 auto;
     width: auto;
     margin: 0;
     gap: 2px;
@@ -455,9 +789,17 @@ html.android-app body {
 }
 
 .android-app .player-controls-primary .control-btn {
-    width: 42px;
-    height: 42px;
+    width: 40px;
+    height: 40px;
     font-size: 1rem;
+}
+
+.android-app .android-seek-label {
+    align-items: center;
+    justify-content: center;
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: -0.04em;
 }
 
 .android-app .player-controls-primary #play-btn {
@@ -482,7 +824,6 @@ html.android-app body {
     height: 22px;
 }
 
-.android-app .player-controls-primary #prev-btn,
 .android-app .player-controls-primary #fs-toggle-btn {
     display: none;
 }
@@ -531,8 +872,9 @@ html.android-app body {
 .android-app.music-playing .player-more-menu .android-music-action {
     display: flex;
     width: 100%;
-    height: 52px;
-    padding: 0 14px;
+    height: auto;
+    min-height: 54px;
+    padding: 9px 14px;
     gap: 14px;
     flex-direction: row;
     justify-content: flex-start;
@@ -551,13 +893,14 @@ html.android-app body {
     line-height: 1.2;
     text-align: left;
     text-overflow: clip;
-    white-space: nowrap;
+    overflow-wrap: anywhere;
+    white-space: normal;
 }
 
 .android-app .player-more-menu .control-btn > [aria-hidden="true"] {
-    width: 24px;
-    flex: 0 0 24px;
-    font-size: 1.2rem;
+    width: 27px;
+    flex: 0 0 27px;
+    font-size: 1.35rem;
     line-height: 1;
     text-align: center;
 }
@@ -589,14 +932,101 @@ html.android-app body {
     width: auto;
 }
 
+.android-app .loading-content {
+    width: min(300px, calc(100vw - 40px));
+    padding: 24px 20px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 20px;
+    background: rgba(22, 22, 35, 0.96);
+}
+
+.android-app .error-message {
+    left: 12px;
+    right: 12px;
+    width: auto;
+    max-width: none;
+    border-radius: 18px;
+}
+
 @media (max-width: 380px) {
+    .android-app .header {
+        padding-inline: 10px;
+    }
+
+    .android-app .header-actions {
+        gap: 6px;
+    }
+
+    .android-app .android-library-btn {
+        width: 42px;
+        min-width: 42px;
+        padding: 0;
+    }
+
+    .android-app .android-library-btn span {
+        display: none;
+    }
+
+    .android-app .android-library-btn svg {
+        width: 23px;
+        height: 23px;
+        flex-basis: 23px;
+    }
+
+    .android-app .brand-text::after {
+        font-size: 1.06rem;
+    }
+
+    .android-app .logo::before {
+        width: 26px;
+        height: 26px;
+        flex-basis: 26px;
+    }
+
     .android-app .album-modal-art {
         width: 112px;
         height: 112px;
     }
 
-    .android-app .player-controls-primary #next-btn {
-        display: none;
+    .android-app .player-bar {
+        padding-inline: 9px;
+    }
+
+    .android-app .player-main-row {
+        gap: 6px;
+    }
+
+    .android-app .player-art {
+        width: 40px;
+        height: 40px;
+    }
+
+    .android-app .player-controls-primary .control-btn {
+        width: 38px;
+        height: 38px;
+    }
+
+    .android-app .book-info-actions {
+        grid-template-columns: 1fr;
+    }
+
+    .android-app .book-info-actions .album-action-btn {
+        grid-column: 1;
+    }
+
+    .android-app .book-info-gr-header,
+    .android-app .audiobook-discovery-warning {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .android-app .book-info-gr-rating {
+        flex-wrap: wrap;
+    }
+
+    .android-app .audiobook-discovery-warning button,
+    .android-app .audiobook-discovery-header > button {
+        width: 100%;
     }
 }
 
@@ -8065,6 +8495,169 @@ body {
 .book-info-badge.genres {
     background: rgba(99, 102, 241, 0.12);
     color: var(--accent-color, #6366f1);
+}
+
+.audiobook-genre-toolbar {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding: 4px 0 18px;
+    scrollbar-width: none;
+}
+
+.audiobook-genre-toolbar::-webkit-scrollbar {
+    display: none;
+}
+
+.audiobook-genre-chip {
+    flex: 0 0 auto;
+    min-height: 36px;
+    padding: 7px 14px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-secondary);
+    font: inherit;
+    font-size: 0.82rem;
+    cursor: pointer;
+}
+
+.audiobook-genre-chip.active {
+    background: var(--accent-color, #6366f1);
+    border-color: transparent;
+    color: #fff;
+}
+
+.audiobook-card-genres {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-top: 7px;
+}
+
+.audiobook-card-genres span {
+    padding: 3px 7px;
+    border-radius: 999px;
+    background: rgba(99, 102, 241, 0.14);
+    color: var(--text-secondary);
+    font-size: 0.68rem;
+    line-height: 1.2;
+}
+
+.audiobook-search-card-wrapper .audiobook-card-genres {
+    padding: 0 4px 8px;
+}
+
+.audiobook-discovery-view {
+    width: 100%;
+}
+
+.audiobook-discovery-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.audiobook-discovery-header h2,
+.audiobook-discovery-header p {
+    margin: 0;
+}
+
+.audiobook-discovery-header > div > p:last-child {
+    margin-top: 7px;
+    color: var(--text-secondary);
+}
+
+.audiobook-discovery-eyebrow {
+    color: var(--accent-color, #6366f1);
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.audiobook-discovery-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 14px;
+}
+
+.audiobook-discovery-card {
+    display: grid;
+    grid-template-columns: 92px minmax(0, 1fr);
+    gap: 14px;
+    padding: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.035);
+}
+
+.audiobook-discovery-card > img {
+    width: 92px;
+    height: 138px;
+    border-radius: 9px;
+    object-fit: cover;
+    background: var(--bg-surface);
+}
+
+.audiobook-discovery-card-body {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    align-items: flex-start;
+}
+
+.audiobook-discovery-card h3 {
+    display: -webkit-box;
+    overflow: hidden;
+    margin: 2px 0 5px;
+    font-size: 0.98rem;
+    line-height: 1.3;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+}
+
+.audiobook-discovery-card p {
+    overflow: hidden;
+    width: 100%;
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.audiobook-discovery-card .discovery-find-audio {
+    margin-top: auto;
+    padding: 7px 12px;
+    font-size: 0.78rem;
+}
+
+.audiobook-discovery-note {
+    margin: 18px 0 0;
+    color: var(--text-tertiary);
+    font-size: 0.78rem;
+    text-align: center;
+}
+
+@media (max-width: 600px) {
+    .audiobook-discovery-header {
+        flex-direction: column;
+    }
+
+    .audiobook-discovery-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .audiobook-discovery-card {
+        grid-template-columns: 78px minmax(0, 1fr);
+    }
+
+    .audiobook-discovery-card > img {
+        width: 78px;
+        height: 117px;
+    }
 }
 
 .book-info-actions {

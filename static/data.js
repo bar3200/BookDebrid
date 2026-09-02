@@ -397,6 +397,11 @@ export function togglePodcastFavorite(podcast) {
 // ========== AUDIOBOOK FAVORITES ==========
 export function saveAudiobookFavorites() {
     localStorage.setItem('freedify_audiobooks', JSON.stringify(state.audiobookFavorites));
+    try {
+        window.FreedifyAndroid?.syncAudiobookLibrary?.(JSON.stringify(state.audiobookFavorites));
+    } catch (_) {
+        // Native library mirroring is best effort; browser builds have no bridge.
+    }
     markDirty('audiobook_favorites');
 }
 
@@ -415,6 +420,8 @@ export function addAudiobookFavorite(book) {
         debrid_id: book.debrid_id || null,
         info_hash: book.info_hash || null,
         description: book.description || '',
+        genres: Array.isArray(book.genres) ? book.genres : [],
+        metadata_source: book.metadata_source || null,
         addedAt: Date.now()
     });
     saveAudiobookFavorites();

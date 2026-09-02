@@ -1,23 +1,26 @@
-# Freedify Android
+# BookDebrid Android
 
-This module packages Freedify's existing FastAPI backend and web UI into one
-Android application. Chaquopy embeds Python 3.13, the app starts Uvicorn on
-`127.0.0.1:8000`, and an Android WebView loads that private local server. The
-backend is never bound to the LAN.
+This module packages BookDebrid as an audiobook-first native Android app.
+Chaquopy preserves the existing Python/FastAPI integrations and starts Uvicorn
+on private `127.0.0.1:8000`; Jetpack Compose provides the Home, Search, My
+Books, book details, chapters, player, and settings screens. The older Freedify
+WebView remains available from **Settings → Open legacy Freedify interface** for
+music, podcasts, backups, and migration during the transition.
 
 ## Install and use
 
-1. Download `freedify-signed-apk` from a successful **Build Signed Android APK**
-   GitHub Actions run, unzip the artifact, and install `app-release.apk`. Android
+1. Download the versioned `BookDebrid-…-signed-apk` artifact from a successful
+   **Build Signed Android APK** GitHub Actions run, unzip it, and install the
+   enclosed versioned `BookDebrid` APK. Android
    may ask you to allow installs from the browser or file manager used.
 2. On first run, enter an AllDebrid API key. Create or revoke keys in your
    AllDebrid account; no key is included in the repository or APK.
-3. Open **Audiobooks**, choose AllDebrid, and search AudiobookBay or paste a
-   direct AudiobookBay URL. Magnet upload, polling, chapter enumeration,
+3. Use native **Search** to search AudiobookBay or paste a direct AudiobookBay
+   URL. Magnet upload, polling, chapter enumeration,
    playback-link refresh, cloud magnet search, and deletion use the embedded
    backend.
-4. Replace the key later from the in-app **Settings** screen under
-   **AllDebrid API key**. Updating it no longer reloads the player.
+4. Replace the key later from native **Settings**. Updating it does not reload
+   the player.
 
 The credential is encrypted with an AES-GCM key held by Android Keystore. Only
 the ciphertext and IV are kept in the app's private `SharedPreferences`; the
@@ -59,14 +62,32 @@ the first secret. Never commit the keystore or any password. Keep an encrypted,
 tested backup of the keystore and credentials: losing this signing identity
 means future APKs cannot update existing installations.
 
-Version `1.3.7` uses `versionCode` 12. Installations made from earlier workflow
-debug artifacts have a different signature and therefore require a one-time
-uninstall before installing this release. That uninstall removes the app's
-stored settings, including the encrypted AllDebrid key. After installing this
-signed APK once, later builds signed by the same persistent key can update it in
-place as long as their `versionCode` increases.
+Version `1.6.7` uses `versionCode` 35 and can update earlier persistently signed
+builds in place. Installations made from older ephemeral debug artifacts
+have a different signature and therefore require a one-time uninstall. That
+uninstall removes the app's stored settings, including the encrypted AllDebrid
+key. Builds signed by the same persistent key can update in place as long as
+their `versionCode` increases.
 
 ## Android-specific behavior and limits
+
+- Audiobook navigation and playback are native Android code. The library is
+  stored in private Android `SharedPreferences`, while the API key remains
+  separately encrypted with Android Keystore. Opening the legacy interface
+  imports its existing `freedify_audiobooks` library into the native library;
+  later legacy book changes are mirrored through the restricted JavaScript
+  bridge.
+- One native media service owns playback independently of the activity. It
+  applies speech audio attributes, Android audio focus, pause-on-disconnect,
+  chapter boundaries, automatic next-chapter playback, persistent resume
+  positions, playback speed, notification and lock-screen controls, Bluetooth
+  controls, and the full-screen native player.
+- Android Auto sees a browsable **Continue listening → My Books → Chapters**
+  hierarchy through `MediaBrowserServiceCompat`. Playback can start from the
+  car even when the phone activity has not been opened, as long as the API key
+  was configured previously. For a sideloaded build, enable Android Auto
+  developer mode and **Unknown sources** before looking for BookDebrid in the
+  launcher. Do not interact with the phone while driving.
 
 - The normal Python backend and static UI are copied into the APK at build time.
   App data and audiobook cache metadata are redirected to Android's private app
@@ -87,14 +108,10 @@ place as long as their `versionCode` increases.
   is focused on AllDebrid audiobook playback, whose returned audio files stream
   directly and do not require FFmpeg. Features which depend on those optional
   packages may be unavailable or use their existing non-AI fallback.
-- A foreground media-playback service keeps the app process and localhost
-  backend alive and makes WebView audio reasonably resilient when the app is in
-  the background. A native Android media session mirrors title, artist,
-  duration, position, playback speed, and play state, and routes notification,
-  lock-screen, Bluetooth, and headset play/pause/seek/previous/next commands
-  back to the web player. Android/OEM battery policies may still stop the
-  process after the app is removed from recents or after prolonged background
-  use.
+- The legacy WebView can still publish its media state to the same Android media
+  session. Starting native audiobook playback transfers ownership to the native
+  player. Android/OEM battery policies can still stop a sideloaded app after
+  prolonged inactivity if the user applies unusually strict battery limits.
 - Android opens directly in audiobook mode. Search requests preserve the exact
   typed term, cancel stale in-flight searches, use AudiobookBay's explicit
   paginated search route, and reject unrelated homepage responses instead of

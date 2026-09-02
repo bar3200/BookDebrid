@@ -1,12 +1,18 @@
 <resources>
     <style name="Theme.Freedify" parent="Theme.AppCompat.DayNight.NoActionBar">
-        <item name="colorPrimary">#7C3AED</item>
-        <item name="colorPrimaryDark">#4C1D95</item>
-        <item name="colorAccent">#A78BFA</item>
+        <item name="colorPrimary">#3B82F6</item>
+        <item name="colorPrimaryDark">#081456</item>
+        <item name="colorAccent">#70D1FF</item>
         <item name="android:fontFamily">sans</item>
         <item name="android:navigationBarColor">#090912</item>
         <item name="android:statusBarColor">#090912</item>
         <item name="android:windowActionModeOverlay">true</item>
         <item name="android:windowLightStatusBar">false</item>
+    </style>
+
+    <style name="Theme.BookDebrid.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/bookdebrid_icon_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_bookdebrid</item>
+        <item name="postSplashScreenTheme">@style/Theme.Freedify</item>
     </style>
 </resources>

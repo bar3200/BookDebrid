@@ -77,10 +77,22 @@ jobs:
       - name: Verify APK signature
         run: "$ANDROID_HOME/build-tools/35.0.0/apksigner verify --verbose --print-certs android/app/build/outputs/apk/release/app-release.apk"
 
+      - name: Prepare versioned APK
+        id: package
+        shell: bash
+        run: |
+          version_name="$(sed -n 's/^[[:space:]]*versionName = "\([^"]*\)"/\1/p' android/app/build.gradle.kts | head -n 1)"
+          if [ -z "$version_name" ]; then
+            echo "Could not read Android versionName" >&2
+            exit 1
+          fi
+          cp android/app/build/outputs/apk/release/app-release.apk "android/app/build/outputs/apk/release/BookDebrid-$version_name.apk"
+          echo "version_name=$version_name" >> "$GITHUB_OUTPUT"
+
       - name: Upload signed APK
         uses: actions/upload-artifact@v4
         with:
-          name: freedify-signed-apk
-          path: android/app/build/outputs/apk/release/app-release.apk
+          name: BookDebrid-${{ steps.package.outputs.version_name }}-signed-apk
+          path: android/app/build/outputs/apk/release/BookDebrid-${{ steps.package.outputs.version_name }}.apk
           if-no-files-found: error
           retention-days: 14

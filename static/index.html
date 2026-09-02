@@ -9,6 +9,7 @@
     <script>
         if (navigator.userAgent.includes('FreedifyAndroid') || new URLSearchParams(location.search).has('androidPreview')) {
             document.documentElement.classList.add('android-app');
+            document.title = 'BookDebrid';
         }
     </script>
     <title>Freedify</title>
@@ -18,10 +19,19 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Orbitron:wght@400;700;900&family=Permanent+Marker&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/styles.css?t=1787760004">
-    <!-- Google API for Drive sync -->
-    <script src="https://accounts.google.com/gsi/client" async defer></script>
-    <script src="https://apis.google.com/js/api.js" async defer></script>
+    <link rel="stylesheet" href="/static/styles.css?t=1788022800">
+    <!-- Google Drive is desktop-only; keep its SDK traffic out of the audiobook APK. -->
+    <script>
+        if (!document.documentElement.classList.contains('android-app')) {
+            ['https://accounts.google.com/gsi/client', 'https://apis.google.com/js/api.js'].forEach(src => {
+                const script = document.createElement('script');
+                script.src = src;
+                script.async = true;
+                script.defer = true;
+                document.head.appendChild(script);
+            });
+        }
+    </script>
     <!-- Butterchurn loaded on-demand when visualizer is opened (see app.js) -->
 </head>
 <body>
@@ -67,6 +77,12 @@
             <h1 class="logo"><span class="brand-text">Freedify</span></h1>
             <div class="header-actions">
                 <button id="hifi-btn" class="header-btn" title="HiFi Mode - Stream lossless FLAC (faster startup, more data)">HiFi</button>
+                <button id="android-library-btn" type="button" class="android-only android-library-btn" title="Go to My Books" aria-label="Go to My Books">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="m3 11 9-8 9 8"></path><path d="M5 10v10h14V10"></path><path d="M9 20v-6h6v6"></path>
+                    </svg>
+                    <span>My Books</span>
+                </button>
                 <button id="settings-btn" class="header-btn settings-btn" title="Settings">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <circle cx="12" cy="12" r="3"></circle>
@@ -80,13 +96,14 @@
         <div id="settings-modal" class="settings-modal hidden">
             <div class="settings-modal-content">
                 <div class="settings-modal-header">
-                    <h2>Settings</h2>
+                    <h2><span class="android-desktop-only">Settings</span><span class="android-only">Audiobook settings</span></h2>
                     <button id="settings-close" class="settings-close">×</button>
                 </div>
                 <div class="settings-modal-body">
                     <!-- Connections -->
                     <div class="settings-section">
-                        <h3 class="settings-section-title">Connections</h3>
+                        <h3 class="settings-section-title android-desktop-only">Connections</h3>
+                        <h3 class="settings-section-title android-only">Audiobook service</h3>
                         <button class="settings-item android-only" id="android-api-key-btn">AllDebrid API key</button>
                         <p class="settings-hint android-only">Your key is encrypted in Android's secure app storage. Desktop-only account connections are hidden in the APK.</p>
                         <button class="settings-item android-desktop-only" id="spotify-connect-btn">Connect Spotify</button>
@@ -139,14 +156,15 @@
                         <button class="settings-item" id="dj-mode-btn">DJ Mode</button>
                     </div>
                     <!-- Local Files -->
-                    <div class="settings-section">
+                    <div class="settings-section android-desktop-only">
                         <h3 class="settings-section-title">Local Files</h3>
                         <label for="file-input" class="settings-item" style="cursor: pointer;">Add Local Songs (MP3/FLAC)</label>
                         <input type="file" id="file-input" accept="audio/*" multiple class="hidden">
                     </div>
                     <!-- Storage / Audio Cache -->
                     <div class="settings-section">
-                        <h3 class="settings-section-title">Storage</h3>
+                        <h3 class="settings-section-title android-desktop-only">Storage</h3>
+                        <h3 class="settings-section-title android-only">Audiobook storage</h3>
 
                         <div class="android-desktop-only">
                             <!-- Library folder -->
@@ -181,7 +199,7 @@
                             <div class="settings-divider"></div>
                         </div>
 
-                        <p class="settings-hint" id="cache-usage">Played tracks are cached for instant replay.</p>
+                        <p class="settings-hint" id="cache-usage"><span class="android-desktop-only">Played tracks are cached for instant replay.</span><span class="android-only">Downloaded audiobook files are stored privately on this device.</span></p>
                         <div class="cache-size-row">
                             <label for="cache-size-input" class="cache-size-label">Max cache size (GB)</label>
                             <input type="number" id="cache-size-input" class="settings-input cache-size-input"
@@ -234,7 +252,7 @@
             </div>
             
             <!-- Search Type Selector -->
-            <div class="search-type-selector">
+            <div class="search-type-selector android-desktop-only">
                 <button class="type-btn active" data-type="track">Songs</button>
                 <button class="type-btn" data-type="album">Albums</button>
                 <button class="type-btn" data-type="artist">Artists</button>
@@ -365,7 +383,7 @@
         <!-- Queue Section -->
         <section id="queue-section" class="queue-section hidden">
             <div class="queue-header">
-                <h3>Queue <span id="queue-count">(0)</span><input type="checkbox" id="queue-select-all" title="Select all" style="margin-left:8px; cursor:pointer; vertical-align:middle;"></h3>
+                <h3><span class="android-desktop-only">Queue</span><span class="android-only">Chapters</span> <span id="queue-count">(0)</span><input type="checkbox" id="queue-select-all" class="android-desktop-only" title="Select all" style="margin-left:8px; cursor:pointer; vertical-align:middle;"></h3>
                 <div class="queue-controls">
                     <div class="export-dropdown-container">
                         <button id="queue-export-btn" class="export-btn" title="Export Queue">📤</button>
@@ -591,6 +609,7 @@
                             <button id="book-info-start-btn" class="album-action-btn hidden">Start from beginning</button>
                             <button id="book-info-chapters-btn" class="album-action-btn">Chapters</button>
                             <button id="book-info-refresh-btn" class="album-action-btn">Refresh chapters</button>
+                            <button id="book-info-similar-btn" class="album-action-btn">Explore similar books</button>
                             <button id="book-info-delete-btn" class="album-action-btn danger hidden" style="background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.2);">Delete from AllDebrid</button>
                         </div>
                     </div>
@@ -632,11 +651,11 @@
                 </div>
                 
                 <div class="player-controls-primary">
-                    <button id="prev-btn" class="control-btn" title="Previous">⏮</button>
+                    <button id="prev-btn" class="control-btn" title="Previous"><span class="android-desktop-only">⏮</span><span class="android-only android-seek-label">−15</span></button>
                     <button id="play-btn" class="control-btn play-btn" title="Play" aria-label="Play">
                         <svg class="playback-icon playback-icon-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10-6.5z" fill="currentColor"></path></svg>
                     </button>
-                    <button id="next-btn" class="control-btn" title="Next">⏭</button>
+                    <button id="next-btn" class="control-btn" title="Next"><span class="android-desktop-only">⏭</span><span class="android-only android-seek-label">+15</span></button>
                     <button id="fs-toggle-btn" class="control-btn" title="Full Screen">⤢</button>
                     <button id="more-controls-btn" class="control-btn" title="Player options" aria-label="Player options">
                         <svg class="player-options-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
@@ -659,7 +678,7 @@
                 <div class="more-menu-grid four-col">
                     <button id="player-book-btn" class="control-btn android-audiobook-action" title="Open book and chapters"><span aria-hidden="true">☷</span><span class="player-menu-label">Book</span></button>
                     <button id="restart-chapter-btn" class="control-btn android-longform-action" title="Restart current item"><span aria-hidden="true">↤</span><span class="player-menu-label">Restart</span></button>
-                    <button id="queue-btn" class="control-btn queue-toggle android-essential-action" title="Open queue"><span aria-hidden="true">☰</span><span class="player-menu-label">Queue</span></button>
+                    <button id="queue-btn" class="control-btn queue-toggle android-essential-action" title="Open chapters"><span aria-hidden="true">☰</span><span class="player-menu-label">Chapters</span></button>
                     <button id="repeat-btn" class="control-btn android-essential-action" title="Repeat: Off"><span aria-hidden="true">⟳</span><span class="player-menu-label">Repeat</span></button>
                     <button id="shuffle-queue-btn" class="control-btn" title="Shuffle queue"><span aria-hidden="true">⤭</span><span class="player-menu-label">Shuffle</span></button>
                     <button id="download-current-btn" class="control-btn" title="Download current track"><span aria-hidden="true">⬇</span><span class="player-menu-label">Download</span></button>
@@ -1100,7 +1119,7 @@
     <script src="https://apis.google.com/js/api.js"></script>
     <script src="https://accounts.google.com/gsi/client"></script>
     <script type="module">
-        const appUrl = '/static/app.js?t=1788019201';
+        const appUrl = '/static/app.js?t=1788022800';
         const isAndroidApp = document.documentElement.classList.contains('android-app');
 
         async function prepareAndroidRuntime() {
@@ -1135,7 +1154,7 @@
             const overlay = document.getElementById('error-message');
             const message = document.getElementById('error-text');
             const retry = document.getElementById('error-retry');
-            if (message) message.textContent = 'Freedify could not start. Close and reopen the app to retry.';
+            if (message) message.textContent = 'BookDebrid could not start. Close and reopen the app to retry.';
             if (retry) retry.onclick = () => location.reload();
             if (overlay) overlay.classList.remove('hidden');
         }

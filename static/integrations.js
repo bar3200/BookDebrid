@@ -197,6 +197,7 @@ let googleAccessToken = null;
 
 // Fetch server-side config (Google Client ID from env vars)
 (async function loadServerConfig() {
+    if (document.documentElement.classList.contains('android-app')) return;
     try {
         const res = await fetch('/api/config');
         if (res.ok) {
@@ -1340,13 +1341,15 @@ async function submitScrobble(track) {
     }
 }
 
-// Check initial LB status
-fetch('/api/listenbrainz/validate')
-    .then(res => res.json())
-    .then(data => {
-        state.listenBrainzConfig = data;
-    })
-    .catch(console.error);
+// Check initial LB status only in the full desktop/web experience.
+if (!document.documentElement.classList.contains('android-app')) {
+    fetch('/api/listenbrainz/validate')
+        .then(res => res.json())
+        .then(data => {
+            state.listenBrainzConfig = data;
+        })
+        .catch(console.error);
+}
 
 // ========== LAST.FM AUTH & UI ==========
 (function initLastFM() {
