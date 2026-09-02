@@ -14,8 +14,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -51,6 +49,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilledIconButton
@@ -251,21 +251,36 @@ class BookDebridViewModel(application: android.app.Application) : AndroidViewMod
         _state.value.selectedBook?.let(store::save)
     }
 
-    fun download() {
+    fun download() = refreshDownload(rescan = false)
+
+    fun rescan() = refreshDownload(rescan = true)
+
+    private fun refreshDownload(rescan: Boolean) {
         val book = _state.value.selectedBook ?: return
         viewModelScope.launch {
-            _state.value = _state.value.copy(transferProgress = 0f, transferMessage = "Starting transfer…", error = null)
+            _state.value = _state.value.copy(
+                transferProgress = 0f,
+                transferMessage = if (rescan) "Reading embedded chapter metadata…" else "Starting transfer…",
+                error = null,
+            )
             runCatching {
-                api.download(book) { progress, message ->
+                api.download(book, rescan = rescan) { progress, message ->
                     _state.value = _state.value.copy(transferProgress = progress, transferMessage = message)
                 }
             }.onSuccess { downloaded ->
-                val refreshed = preserveDescriptiveChapterTitles(store.book(downloaded.id) ?: book, downloaded)
+                val previous = store.book(downloaded.id) ?: book
+                val refreshed = preserveDescriptiveChapterTitles(previous, downloaded)
+                val unchangedGenericScan = rescan &&
+                    refreshed.chapters.all(::isGenericChapterTitle) &&
+                    refreshed.chapters.map { it.title } == previous.chapters.map { it.title }
                 store.save(refreshed)
                 _state.value = _state.value.copy(
                     selectedBook = refreshed,
                     transferProgress = null,
                     transferMessage = "",
+                    error = if (unchangedGenericScan) {
+                        "Rescan found chapter markers, but this file exposed only numbered labels."
+                    } else null,
                 )
             }.onFailure {
                 _state.value = _state.value.copy(transferProgress = null, error = it.userMessage())
@@ -571,22 +586,32 @@ private fun HomeScreen(state: NativeUiState, model: BookDebridViewModel) {
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SearchScreen(state: NativeUiState, model: BookDebridViewModel) {
+    var searchModeExpanded by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
         Text("Search by", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-        ) {
-            AudiobookSearchMode.entries.forEach { mode ->
-                FilterChip(
-                    selected = state.searchMode == mode,
-                    onClick = { model.setSearchMode(mode) },
-                    label = { Text(mode.label) },
-                )
+        Box(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+            OutlinedButton(
+                onClick = { searchModeExpanded = true },
+                modifier = Modifier.fillMaxWidth().height(52.dp),
+            ) {
+                Text(state.searchMode.label, Modifier.weight(1f))
+                Icon(Icons.Rounded.ExpandMore, "Choose search type")
+            }
+            DropdownMenu(
+                expanded = searchModeExpanded,
+                onDismissRequest = { searchModeExpanded = false },
+            ) {
+                AudiobookSearchMode.entries.forEach { mode ->
+                    DropdownMenuItem(
+                        text = { Text(mode.label) },
+                        onClick = {
+                            model.setSearchMode(mode)
+                            searchModeExpanded = false
+                        },
+                    )
+                }
             }
         }
         OutlinedTextField(
@@ -827,14 +852,21 @@ private fun BookDetails(state: NativeUiState, model: BookDebridViewModel) {
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.padding(top = 10.dp),
                         )
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            TextButton(onClick = { chaptersExpanded = !chaptersExpanded }) {
+                        Column(Modifier.fillMaxWidth().padding(top = 4.dp)) {
+                            TextButton(
+                                onClick = { chaptersExpanded = !chaptersExpanded },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
                                 Text(if (chaptersExpanded) "Hide chapter list" else "Choose a chapter")
                             }
-                            TextButton(onClick = model::download, enabled = state.transferProgress == null) {
+                            TextButton(
+                                onClick = model::rescan,
+                                enabled = state.transferProgress == null,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
                                 Icon(Icons.Rounded.Refresh, null, Modifier.size(18.dp))
                                 Spacer(Modifier.width(5.dp))
-                                Text("Rescan")
+                                Text("Rescan chapter metadata")
                             }
                         }
                     }
@@ -1048,8 +1080,10 @@ private fun FullPlayer(playback: NativePlaybackState, close: () -> Unit) {
                     Text("Now playing", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                 }
                 Spacer(Modifier.height(10.dp))
-                Cover(playback.coverUrl, Modifier.fillMaxWidth(0.60f).aspectRatio(2f / 3f))
-                Spacer(Modifier.height(16.dp))
+                Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    Cover(playback.coverUrl, Modifier.fillMaxWidth(0.54f).aspectRatio(2f / 3f))
+                }
+                Spacer(Modifier.height(10.dp))
                 Text(playback.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Text(playback.bookTitle, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                 val duration = playback.durationMs.coerceAtLeast(1L)
@@ -1095,15 +1129,13 @@ private fun FullPlayer(playback: NativePlaybackState, close: () -> Unit) {
                         Icon(Icons.Rounded.SkipNext, "Next chapter", Modifier.size(34.dp))
                     }
                 }
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(listOf(0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)) { speed ->
-                        OutlinedButton(
-                            onClick = { PlaybackService.setSpeed(speed) },
-                            colors = if (playback.speed == speed) ButtonDefaults.outlinedButtonColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
-                            else ButtonDefaults.outlinedButtonColors(),
-                        ) { Text("${speed}×") }
-                    }
-                }
+                val speeds = listOf(0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
+                val currentSpeedIndex = speeds.indexOfFirst { it == playback.speed }.takeIf { it >= 0 } ?: 0
+                val nextSpeed = speeds[(currentSpeedIndex + 1) % speeds.size]
+                OutlinedButton(
+                    onClick = { PlaybackService.setSpeed(nextSpeed) },
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                ) { Text("Playback speed: ${playback.speed}×") }
             }
         }
     }

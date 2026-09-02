@@ -38,15 +38,15 @@ class BookDebridApi {
         }.getOrNull()
 
         val metadata = discovery
+        val metadataGenres = metadata?.optJSONArray("genres").toStringList()
+        val goodreadsGenres = goodreads?.optJSONArray("genres").toStringList()
         return book.copy(
             description = book.description.ifBlank {
                 metadata?.optString("description").orEmpty().ifBlank {
                     goodreads?.optString("description").orEmpty()
                 }
             },
-            genres = normalizeAudiobookGenres((metadata?.optJSONArray("genres")?.let { array ->
-                (0 until array.length()).map { array.optString(it) }
-            } ?: emptyList()) + book.genres),
+            genres = normalizeAudiobookGenres(metadataGenres + goodreadsGenres + book.genres),
             rating = goodreads?.number("rating") ?: book.rating,
             ratingsCount = goodreads?.flexibleLong("ratings_count")
                 ?: goodreads?.flexibleLong("rating_count") ?: book.ratingsCount,
@@ -65,7 +65,11 @@ class BookDebridApi {
         return (0 until array.length()).mapNotNull { array.optJSONObject(it)?.let(Audiobook::fromSearch) }
     }
 
-    suspend fun download(book: Audiobook, onProgress: suspend (Float, String) -> Unit): Audiobook {
+    suspend fun download(
+        book: Audiobook,
+        rescan: Boolean = false,
+        onProgress: suspend (Float, String) -> Unit,
+    ): Audiobook {
         val magnet = book.magnetLink
         val transferId = book.debridId ?: run {
             val uploadMagnet = magnet ?: details(book.id).magnetLink
@@ -96,6 +100,14 @@ class BookDebridApi {
 
         onProgress(1f, "Reading chapters…")
         val files = request("/api/debrid/alldebrid/files/${encode(transferId)}")
+        val chapterScan = files.optJSONObject("chapter_scan")
+        if (rescan && chapterScan?.optBoolean("attempted") == true && chapterScan.optInt("count") == 0) {
+            throw ApiException(
+                chapterScan.optString("error").ifBlank {
+                    "The M4B has no readable embedded chapter metadata"
+                },
+            )
+        }
         val audioFiles = files.optJSONArray("audio_files")
             ?: throw ApiException("No audio files were found in this transfer")
         val chapters = mutableListOf<AudiobookChapter>()
@@ -130,6 +142,10 @@ class BookDebridApi {
         if (chapters.isEmpty()) throw ApiException("No playable audiobook files were found")
         return book.copy(magnetLink = magnet ?: book.magnetLink, debridId = transferId, chapters = chapters)
     }
+
+    private fun org.json.JSONArray?.toStringList(): List<String> =
+        if (this == null) emptyList()
+        else (0 until length()).mapNotNull { optString(it).takeIf(String::isNotBlank) }
 
     private fun chapterTitle(chapter: JSONObject, number: Int): String =
         listOf("title", "name", "label")

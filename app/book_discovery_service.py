@@ -178,25 +178,27 @@ async def discover_similar_books(
     matched_genres = supplied_genres
     related_docs: list[dict[str, Any]] = []
     async with httpx.AsyncClient(follow_redirects=True, timeout=15.0) as client:
-        # Saved ABB books often already have useful genres. In that case skip
-        # the metadata lookup, reducing Open Library traffic from two calls to
-        # one and avoiding its low anonymous rate limit.
-        if not supplied_genres:
-            try:
-                search_data = await _get_json(
-                    client,
-                    f"{OPEN_LIBRARY_BASE}/search.json",
-                    title=title,
-                    author=author or None,
-                    fields="key,title,author_name,subject,cover_i,first_publish_year",
-                    limit=10,
-                )
-            except httpx.HTTPError:
+        # AudiobookBay commonly supplies only one broad category. Always enrich
+        # it from the title/author match instead of treating that first value as
+        # complete metadata (for example, "The Passengers" was stuck at only
+        # "Thriller").
+        try:
+            search_data = await _get_json(
+                client,
+                f"{OPEN_LIBRARY_BASE}/search.json",
+                title=title,
+                author=author or None,
+                fields="key,title,author_name,subject,cover_i,first_publish_year",
+                limit=10,
+            )
+        except httpx.HTTPError:
+            if not supplied_genres:
                 return _unavailable_result(title, author, supplied_genres)
-            docs = search_data.get("docs") or []
-            match = max(docs, key=lambda item: _book_score(item, title, author), default={})
-            if match and _book_score(match, title, author) < 60:
-                match = {}
+            search_data = {"docs": []}
+        docs = search_data.get("docs") or []
+        match = max(docs, key=lambda item: _book_score(item, title, author), default={})
+        if match and _book_score(match, title, author) < 60:
+            match = {}
         matched_genres = select_discovery_genres(
             supplied_genres + list(match.get("subject") or []),
             limit=4,
@@ -213,7 +215,7 @@ async def discover_similar_books(
             # Open Library asks anonymous clients to stay around one request
             # per second. A metadata lookup immediately followed by discovery
             # otherwise produces intermittent 429/502 errors on Android.
-            if not supplied_genres:
+            if match:
                 await asyncio.sleep(1.05)
             try:
                 related_data = await _get_json(

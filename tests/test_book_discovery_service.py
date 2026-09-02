@@ -99,13 +99,15 @@ class BookDiscoveryTests(unittest.IsolatedAsyncioTestCase):
             "Foundation Isaac Asimov",
         )
 
-    async def test_supplied_genres_avoid_extra_metadata_request(self):
-        with patch("app.book_discovery_service.httpx.AsyncClient", FakeClient, create=True):
+    async def test_supplied_genres_are_enriched_by_title_metadata(self):
+        with patch("app.book_discovery_service.httpx.AsyncClient", FakeClient, create=True), \
+             patch("app.book_discovery_service.asyncio.sleep", return_value=None):
             result = await discover_similar_books("Dune", "Frank Herbert", ["Science Fiction"])
 
-        self.assertEqual(len(FakeClient.calls), 1)
-        self.assertIn("q", FakeClient.calls[0])
-        self.assertEqual(result["genres"], ["Science Fiction"])
+        self.assertEqual(len(FakeClient.calls), 2)
+        self.assertIn("title", FakeClient.calls[0])
+        self.assertIn("q", FakeClient.calls[1])
+        self.assertEqual(result["genres"], ["Science Fiction", "Adventure"])
 
     async def test_temporary_upstream_failure_returns_retryable_result(self):
         class UnavailableClient(FakeClient):

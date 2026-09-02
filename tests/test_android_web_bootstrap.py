@@ -93,7 +93,7 @@ class AndroidWebBootstrapTests(unittest.TestCase):
         self.assertIn("playbackErrorMessage(error)", service)
         self.assertIn("intent.getBooleanExtra(EXTRA_RESTART, false)", service)
         self.assertIn("private fun FullPlayer", activity)
-        self.assertIn("PlaybackService.setSpeed(speed)", activity)
+        self.assertIn("PlaybackService.setSpeed(nextSpeed)", activity)
 
     def test_native_library_migrates_legacy_webview_books(self):
         activity = (ROOT / "android/app/src/main/java/com/freedify/android/MainActivity.kt").read_text(encoding="utf-8")
@@ -171,7 +171,7 @@ class AndroidWebBootstrapTests(unittest.TestCase):
         self.assertIn("private fun loadHomeRecommendations()", activity)
         self.assertIn('"Books you might like"', activity)
         self.assertIn('"Inspired by ${state.recommendationSeedTitle}"', activity)
-        recommendation_section = activity[activity.index('"Books you might like"'):activity.index("@OptIn(ExperimentalLayoutApi::class)")]
+        recommendation_section = activity[activity.index('"Books you might like"'):activity.index("private fun SearchScreen")]
         self.assertNotIn("Card(", recommendation_section)
         self.assertIn("LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp))", recommendation_section)
         self.assertIn('book.id.startsWith("/works/")', activity)
@@ -191,17 +191,22 @@ class AndroidWebBootstrapTests(unittest.TestCase):
         self.assertIn('"Genre & format suggestions"', activity)
         self.assertIn("it.contains(typedGenre, ignoreCase = true)", activity)
         self.assertIn("model.setSearchQuery(genre)", activity)
+        self.assertIn("DropdownMenu(", activity)
+        self.assertIn("searchModeExpanded", activity)
 
     def test_native_large_text_layout_and_chapter_refresh_are_safe(self):
         activity = (ROOT / "android/app/src/main/java/com/freedify/android/NativeMainActivity.kt").read_text(encoding="utf-8")
         playback = (ROOT / "android/app/src/main/java/com/freedify/android/PlaybackService.kt").read_text(encoding="utf-8")
 
-        self.assertIn("FlowRow(", activity)
+        self.assertIn("DropdownMenu(", activity)
         self.assertIn('"Book details"', activity)
         self.assertIn('"Manage this book"', activity)
         self.assertIn("cleanBookDescription(book.description)", activity)
         self.assertIn("preserveDescriptiveChapterTitles", activity)
         self.assertIn("chapter.copy(title = prior.title)", activity)
+        self.assertIn("fun rescan() = refreshDownload(rescan = true)", activity)
+        self.assertIn('"Rescan chapter metadata"', activity)
+        self.assertIn("chapterScan?.optBoolean(\"attempted\")", (ROOT / "android/app/src/main/java/com/freedify/android/BookDebridApi.kt").read_text(encoding="utf-8"))
         self.assertIn('return "Chapter $number of ${book.chapters.size}"', playback)
         self.assertIn("if (state.selectedBook != null) {\n                TopAppBar(", activity)
         self.assertNotIn('state.selectedBook?.title ?: "BookDebrid"', activity)
@@ -213,7 +218,8 @@ class AndroidWebBootstrapTests(unittest.TestCase):
         self.assertIn("FilledIconButton(onClick = PlaybackService::toggle", activity)
         self.assertIn("Modifier.size(82.dp)", activity)
         self.assertIn("Modifier.size(60.dp)", activity)
-        self.assertIn("fillMaxWidth(0.60f).aspectRatio(2f / 3f)", activity)
+        self.assertIn('"Playback speed: ${playback.speed}×"', activity)
+        self.assertIn("Modifier.weight(1f).fillMaxWidth()", activity)
 
     def test_android_uses_full_size_adaptive_bookdebrid_icon(self):
         manifest = (
