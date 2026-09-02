@@ -115,10 +115,10 @@ class BookDebridApi {
         val files = request("/api/debrid/alldebrid/files/${encode(transferId)}")
         val chapterScan = files.optJSONObject("chapter_scan")
         if (rescan && chapterScan?.optBoolean("attempted") == true && chapterScan.optInt("count") == 0) {
+            val scanError = chapterScan.optString("error")
+                .takeUnless { chapterScan.isNull("error") || it.isBlank() || it == "null" }
             throw ApiException(
-                chapterScan.optString("error").ifBlank {
-                    "The M4B has no readable embedded chapter metadata"
-                },
+                scanError ?: "The M4B has no readable embedded chapter metadata",
             )
         }
         val audioFiles = files.optJSONArray("audio_files")

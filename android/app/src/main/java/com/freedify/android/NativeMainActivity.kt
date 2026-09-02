@@ -255,10 +255,14 @@ class BookDebridViewModel(application: android.app.Application) : AndroidViewMod
 
     fun rescan() {
         viewModelScope.launch {
+            val selectedId = _state.value.selectedBook?.id
             // The former WebView may already have richer titles cached for an
             // existing book. Recover those before refreshing AllDebrid so the
             // merge below can preserve them if the M4B now yields only numbers.
             runCatching { LegacyAudiobookImporter.importSavedLibrary() }
+            selectedId?.let(store::book)?.let { recovered ->
+                _state.value = _state.value.copy(selectedBook = recovered)
+            }
             refreshDownload(rescan = true)
         }
     }
