@@ -148,7 +148,7 @@ class AndroidWebBootstrapTests(unittest.TestCase):
         self.assertIn('var chaptersExpanded by remember(book.id)', activity)
         self.assertIn('Text("Books like this"', activity)
         self.assertLess(activity.index('Text("Books like this"'), activity.index('Text("Chapters"'))
-        self.assertIn('Text("Book options"', activity)
+        self.assertIn('Text("Manage this book")', activity)
         self.assertIn("fun snapshotForBook(bookId: String)", store)
         self.assertIn('.putString("book_chapter:$bookId", chapterId)', store)
         self.assertIn("primary = Color(0xFF8AB4FF)", activity)
@@ -182,6 +182,18 @@ class AndroidWebBootstrapTests(unittest.TestCase):
         self.assertIn('"Genre suggestions"', activity)
         self.assertIn("it.contains(typedGenre, ignoreCase = true)", activity)
         self.assertIn("model.setSearchQuery(genre)", activity)
+
+    def test_native_large_text_layout_and_chapter_refresh_are_safe(self):
+        activity = (ROOT / "android/app/src/main/java/com/freedify/android/NativeMainActivity.kt").read_text(encoding="utf-8")
+        playback = (ROOT / "android/app/src/main/java/com/freedify/android/PlaybackService.kt").read_text(encoding="utf-8")
+
+        self.assertIn("FlowRow(", activity)
+        self.assertIn('"Book details"', activity)
+        self.assertIn('"Manage this book"', activity)
+        self.assertIn("cleanBookDescription(book.description)", activity)
+        self.assertIn("preserveDescriptiveChapterTitles", activity)
+        self.assertIn("chapter.copy(title = prior.title)", activity)
+        self.assertIn('return "Chapter $number of ${book.chapters.size}"', playback)
 
     def test_android_uses_full_size_adaptive_bookdebrid_icon(self):
         manifest = (

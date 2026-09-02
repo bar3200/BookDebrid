@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -32,7 +34,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.LibraryBooks
 import androidx.compose.material.icons.rounded.AutoStories
-import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
@@ -45,7 +46,6 @@ import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.SkipNext
-import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -279,9 +279,10 @@ class BookDebridViewModel(application: android.app.Application) : AndroidViewMod
                     _state.value = _state.value.copy(transferProgress = progress, transferMessage = message)
                 }
             }.onSuccess { downloaded ->
-                store.save(downloaded)
+                val refreshed = preserveDescriptiveChapterTitles(store.book(downloaded.id) ?: book, downloaded)
+                store.save(refreshed)
                 _state.value = _state.value.copy(
-                    selectedBook = downloaded,
+                    selectedBook = refreshed,
                     transferProgress = null,
                     transferMessage = "",
                 )
@@ -354,6 +355,20 @@ class BookDebridViewModel(application: android.app.Application) : AndroidViewMod
                 recommendationSeedTitle = seed.title,
             )
         }
+    }
+
+    private fun preserveDescriptiveChapterTitles(previous: Audiobook, refreshed: Audiobook): Audiobook {
+        if (previous.chapters.isEmpty()) return refreshed
+        val chapters = refreshed.chapters.mapIndexed { index, chapter ->
+            val prior = previous.chapters.minByOrNull { candidate ->
+                kotlin.math.abs(candidate.startSeconds - chapter.startSeconds)
+            }?.takeIf { kotlin.math.abs(it.startSeconds - chapter.startSeconds) < 2.0 }
+                ?: previous.chapters.getOrNull(index)
+            if (isGenericChapterTitle(chapter) && prior != null && !isGenericChapterTitle(prior)) {
+                chapter.copy(title = prior.title)
+            } else chapter
+        }
+        return refreshed.copy(chapters = chapters)
     }
 }
 
@@ -440,7 +455,7 @@ private fun BookDebridApp(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(state.selectedBook?.title ?: "BookDebrid", maxLines = 1) },
+                title = { Text(if (state.selectedBook != null) "Book details" else "BookDebrid", maxLines = 1) },
                 navigationIcon = {
                     if (state.selectedBook != null) IconButton(onClick = model::closeBook) {
                         Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back")
@@ -555,7 +570,7 @@ private fun HomeScreen(state: NativeUiState, model: BookDebridViewModel) {
                         Column(Modifier.padding(vertical = 18.dp)) {
                             Text(
                                 "Books you might like",
-                                style = MaterialTheme.typography.titleLarge,
+                                style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.SemiBold,
                                 modifier = Modifier.padding(horizontal = 18.dp),
                             )
@@ -582,15 +597,17 @@ private fun HomeScreen(state: NativeUiState, model: BookDebridViewModel) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SearchScreen(state: NativeUiState, model: BookDebridViewModel) {
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
         Text("Search by", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        LazyRow(
+        FlowRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
             modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
         ) {
-            items(AudiobookSearchMode.entries) { mode ->
+            AudiobookSearchMode.entries.forEach { mode ->
                 FilterChip(
                     selected = state.searchMode == mode,
                     onClick = { model.setSearchMode(mode) },
@@ -663,32 +680,40 @@ private fun LibraryScreen(books: List<Audiobook>, model: BookDebridViewModel) {
 @Composable
 private fun BookDetails(state: NativeUiState, model: BookDebridViewModel) {
     val book = state.selectedBook ?: return
-    var confirmCloudDelete by remember(book.id) { mutableStateOf(false) }
-    var confirmLibraryRemove by remember(book.id) { mutableStateOf(false) }
     var chaptersExpanded by remember(book.id) { mutableStateOf(false) }
+    var showBookOptions by remember(book.id) { mutableStateOf(false) }
     val resumeChapter = model.resumeChapter(book)
     val resumePosition = model.resumePosition(book)
     val inLibrary = state.books.any { it.id == book.id }
+    val description = cleanBookDescription(book.description)
+    val numberedOnly = book.chapters.size > 1 && book.chapters.all(::isGenericChapterTitle)
+    val namedChapterPreview = book.chapters
+        .filterNot(::isGenericChapterTitle)
+        .map { it.title }
+        .distinct()
+        .take(3)
 
     LazyColumn(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
         item {
-            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp)) {
-                Column(Modifier.padding(18.dp)) {
+            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp)) {
+                Column(Modifier.padding(16.dp)) {
                     Row(verticalAlignment = Alignment.Top) {
-                        Cover(book.coverUrl, Modifier.size(width = 112.dp, height = 168.dp))
-                        Column(Modifier.padding(start = 18.dp).weight(1f)) {
+                        Cover(book.coverUrl, Modifier.size(width = 96.dp, height = 144.dp))
+                        Column(Modifier.padding(start = 16.dp).weight(1f)) {
                             Text(
                                 book.title,
-                                style = MaterialTheme.typography.headlineSmall,
+                                style = MaterialTheme.typography.titleLarge,
                                 fontWeight = FontWeight.Bold,
-                                maxLines = 4,
+                                maxLines = 3,
                                 overflow = TextOverflow.Ellipsis,
                             )
                             Text(
                                 book.author,
-                                style = MaterialTheme.typography.titleMedium,
+                                style = MaterialTheme.typography.bodyLarge,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(top = 5.dp),
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
                             )
                             book.rating?.let { rating ->
                                 Surface(
@@ -697,12 +722,17 @@ private fun BookDetails(state: NativeUiState, model: BookDebridViewModel) {
                                     modifier = Modifier.padding(top = 12.dp),
                                 ) {
                                     Text(
-                                        buildString {
-                                            append("★ %.2f".format(rating))
-                                            book.ratingsCount?.let { append("  ·  %,d ratings".format(it)) }
-                                        },
+                                        "★ %.2f".format(rating),
                                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                                         style = MaterialTheme.typography.labelLarge,
+                                    )
+                                }
+                                book.ratingsCount?.let {
+                                    Text(
+                                        "${compactCount(it)} ratings",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(top = 4.dp),
                                     )
                                 }
                             }
@@ -749,7 +779,7 @@ private fun BookDetails(state: NativeUiState, model: BookDebridViewModel) {
                 }
                 resumeChapter?.let {
                     Text(
-                        "Chapter ${it.number}: ${it.title}",
+                        chapterDisplayTitle(it, book.chapters.size),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -782,42 +812,54 @@ private fun BookDetails(state: NativeUiState, model: BookDebridViewModel) {
             }
         }
 
-        if (book.description.isNotBlank()) item {
+        if (description.isNotBlank()) item {
             Column {
                 Text("About this book", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-                Text(book.description, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 8.dp))
+                Text(description, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 8.dp))
             }
         }
 
         if (book.chapters.isNotEmpty()) {
             item {
-                Card(
-                    Modifier.fillMaxWidth().clickable { chaptersExpanded = !chaptersExpanded },
-                    shape = RoundedCornerShape(20.dp),
-                ) {
-                    Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text("Chapters", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                            Text(
-                                "${book.chapters.size} chapters · ${if (chaptersExpanded) "Tap to hide" else "Tap to choose one"}",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp)) {
+                    Column(Modifier.padding(16.dp)) {
+                        Row(
+                            Modifier.fillMaxWidth().clickable { chaptersExpanded = !chaptersExpanded },
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Chapters", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                                Text("${book.chapters.size} chapter markers", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Icon(
+                                if (chaptersExpanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
+                                if (chaptersExpanded) "Hide chapters" else "Show chapters",
                             )
                         }
-                        TextButton(
-                            onClick = model::download,
-                            enabled = state.transferProgress == null,
-                        ) {
-                            Icon(Icons.Rounded.Refresh, null, Modifier.size(20.dp))
-                            Spacer(Modifier.width(5.dp))
-                            Text("Rescan")
-                        }
-                        Icon(
-                            if (chaptersExpanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
-                            if (chaptersExpanded) "Hide chapters" else "Show chapters",
+                        if (numberedOnly) Text(
+                            "This M4B contains numbered chapter markers but no descriptive chapter titles.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 10.dp),
                         )
+                        else if (namedChapterPreview.isNotEmpty()) Text(
+                            "Includes ${namedChapterPreview.joinToString(" · ")}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(top = 10.dp),
+                        )
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            TextButton(onClick = { chaptersExpanded = !chaptersExpanded }) {
+                                Text(if (chaptersExpanded) "Hide chapter list" else "Choose a chapter")
+                            }
+                            TextButton(onClick = model::download, enabled = state.transferProgress == null) {
+                                Icon(Icons.Rounded.Refresh, null, Modifier.size(18.dp))
+                                Spacer(Modifier.width(5.dp))
+                                Text("Rescan")
+                            }
+                        }
                     }
                 }
             }
@@ -828,50 +870,83 @@ private fun BookDetails(state: NativeUiState, model: BookDebridViewModel) {
 
         if (inLibrary) {
             item {
-                HorizontalDivider(Modifier.padding(top = 8.dp))
-                Text("Book options", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 14.dp))
-                if (!confirmLibraryRemove) {
-                    TextButton(onClick = { confirmLibraryRemove = true }) {
-                        Text("Remove from My Books")
-                    }
-                } else {
-                    Card(Modifier.fillMaxWidth()) {
-                        Column(Modifier.padding(16.dp)) {
-                            Text("Remove from My Books?", fontWeight = FontWeight.SemiBold)
-                            Text("The AllDebrid files will stay available.")
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                                TextButton(onClick = { confirmLibraryRemove = false }) { Text("Cancel") }
-                                Button(onClick = { model.removeBook(false) }) { Text("Remove") }
-                            }
-                        }
-                    }
+                HorizontalDivider()
+                TextButton(onClick = { showBookOptions = true }, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Rounded.MoreHoriz, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Manage this book")
                 }
-                if (!confirmCloudDelete) {
-                    TextButton(onClick = { confirmCloudDelete = true }) {
-                        Icon(Icons.Rounded.DeleteOutline, null, Modifier.size(20.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text("Delete AllDebrid files", color = MaterialTheme.colorScheme.error)
+            }
+        }
+    }
+
+    if (showBookOptions) BookManagementDialog(
+        onDismiss = { showBookOptions = false },
+        onRemove = { model.removeBook(false) },
+        onDeleteCloud = { model.removeBook(true) },
+    )
+}
+
+@Composable
+private fun BookManagementDialog(onDismiss: () -> Unit, onRemove: () -> Unit, onDeleteCloud: () -> Unit) {
+    var confirmation by remember { mutableStateOf<String?>(null) }
+    Dialog(onDismissRequest = onDismiss) {
+        Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp)) {
+            Column(Modifier.padding(20.dp)) {
+                Text("Manage book", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                if (confirmation == null) {
+                    TextButton(onClick = { confirmation = "library" }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Remove from My Books", modifier = Modifier.fillMaxWidth())
                     }
+                    TextButton(onClick = { confirmation = "cloud" }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Delete AllDebrid files", color = MaterialTheme.colorScheme.error, modifier = Modifier.fillMaxWidth())
+                    }
+                    TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) { Text("Done") }
                 } else {
-                    Card(Modifier.fillMaxWidth()) {
-                        Column(Modifier.padding(16.dp)) {
-                            Text("Delete the AllDebrid files too?", fontWeight = FontWeight.SemiBold)
-                            Text("This permanently removes the cloud transfer and the book from My Books.")
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                                TextButton(onClick = { confirmCloudDelete = false }) { Text("Cancel") }
-                                Spacer(Modifier.width(8.dp))
-                                Button(
-                                    onClick = { model.removeBook(true) },
-                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                                ) { Text("Delete") }
-                            }
-                        }
+                    Text(
+                        if (confirmation == "cloud")
+                            "This permanently removes the AllDebrid files and the book from My Books."
+                        else "This removes the book from My Books. Its AllDebrid files will remain.",
+                        modifier = Modifier.padding(vertical = 14.dp),
+                    )
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        TextButton(onClick = { confirmation = null }) { Text("Cancel") }
+                        Spacer(Modifier.width(8.dp))
+                        Button(
+                            onClick = if (confirmation == "cloud") onDeleteCloud else onRemove,
+                            colors = if (confirmation == "cloud")
+                                ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                            else ButtonDefaults.buttonColors(),
+                        ) { Text(if (confirmation == "cloud") "Delete" else "Remove") }
                     }
                 }
             }
         }
     }
 }
+
+private fun isGenericChapterTitle(chapter: AudiobookChapter): Boolean =
+    chapter.title.trim().matches(Regex("(?i)^(chapter|track|part)\\s*0*\\d+$"))
+
+private fun chapterDisplayTitle(chapter: AudiobookChapter, chapterCount: Int): String =
+    if (isGenericChapterTitle(chapter)) "Chapter ${chapter.number} of $chapterCount" else chapter.title
+
+private fun compactCount(value: Long): String = when {
+    value >= 1_000_000 -> "%.1fM".format(value / 1_000_000.0)
+    value >= 1_000 -> "%.1fK".format(value / 1_000.0)
+    else -> value.toString()
+}
+
+private fun cleanBookDescription(raw: String): String = raw
+    .lineSequence()
+    .map(String::trim)
+    .filter(String::isNotBlank)
+    .filterNot { line ->
+        line.matches(Regex("(?i)^(shared by|posted:|format:|bitrate:|file size:).*")) ||
+            line.matches(Regex("(?i)^M4[AB]\\s*/.*"))
+    }
+    .joinToString(" ")
+    .trim()
 
 @Composable
 private fun SettingsScreen(onSave: (String) -> Unit, openLegacy: () -> Unit) {
@@ -955,7 +1030,7 @@ private fun ChapterRow(book: Audiobook, chapter: AudiobookChapter, play: () -> U
             Text(chapter.number.toString())
         }
         Column(Modifier.padding(horizontal = 12.dp).weight(1f)) {
-            Text(chapter.title, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(chapterDisplayTitle(chapter, book.chapters.size), maxLines = 2, overflow = TextOverflow.Ellipsis)
             chapter.effectiveDurationSeconds?.let { Text(formatDuration(it), color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
         Icon(Icons.Rounded.PlayArrow, "Play ${chapter.title}")
@@ -965,20 +1040,20 @@ private fun ChapterRow(book: Audiobook, chapter: AudiobookChapter, play: () -> U
 @Composable
 private fun MiniPlayer(playback: NativePlaybackState, open: () -> Unit) {
     Surface(color = MaterialTheme.colorScheme.surfaceVariant, tonalElevation = 4.dp) {
-        Row(Modifier.fillMaxWidth().height(72.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f).clickable(onClick = open)) {
-                Text(playback.title.ifBlank { "Audiobook" }, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                Text(playback.bookTitle, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                Text(playback.title.ifBlank { "Audiobook" }, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                Text(playback.bookTitle, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
             }
-            IconButton(onClick = { PlaybackService.seekRelative(-10_000) }) { Icon(Icons.Rounded.Replay10, "Back 10 seconds") }
-            Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+            IconButton(onClick = { PlaybackService.seekRelative(-10_000) }, modifier = Modifier.size(42.dp)) { Icon(Icons.Rounded.Replay10, "Back 10 seconds") }
+            Box(Modifier.size(42.dp), contentAlignment = Alignment.Center) {
                 if (playback.buffering) {
-                    CircularProgressIndicator(Modifier.size(30.dp), strokeWidth = 3.dp)
+                    CircularProgressIndicator(Modifier.size(26.dp), strokeWidth = 3.dp)
                 } else IconButton(onClick = { PlaybackService.toggle() }) {
-                    Icon(if (playback.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (playback.playing) "Pause" else "Play", Modifier.size(34.dp))
+                    Icon(if (playback.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (playback.playing) "Pause" else "Play", Modifier.size(30.dp))
                 }
             }
-            IconButton(onClick = { PlaybackService.next() }) { Icon(Icons.Rounded.SkipNext, "Next chapter") }
+            IconButton(onClick = { PlaybackService.next() }, modifier = Modifier.size(42.dp)) { Icon(Icons.Rounded.SkipNext, "Next chapter") }
         }
     }
 }
