@@ -111,6 +111,7 @@ class NativeMainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         splashScreen.setKeepOnScreenCondition { keepSplashOnScreen }
         NativeAudiobookSearch.attach(this)
+        LegacyAudiobookImporter.attach(this)
         if (Build.VERSION.SDK_INT >= 33 &&
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
@@ -129,6 +130,7 @@ class NativeMainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         NativeAudiobookSearch.detach(this)
+        LegacyAudiobookImporter.detach(this)
         super.onDestroy()
     }
 }
@@ -253,7 +255,15 @@ class BookDebridViewModel(application: android.app.Application) : AndroidViewMod
 
     fun download() = refreshDownload(rescan = false)
 
-    fun rescan() = refreshDownload(rescan = true)
+    fun rescan() {
+        viewModelScope.launch {
+            // The former WebView may already have richer titles cached for an
+            // existing book. Recover those before refreshing AllDebrid so the
+            // merge below can preserve them if the M4B now yields only numbers.
+            runCatching { LegacyAudiobookImporter.importSavedLibrary() }
+            refreshDownload(rescan = true)
+        }
+    }
 
     private fun refreshDownload(rescan: Boolean) {
         val book = _state.value.selectedBook ?: return
