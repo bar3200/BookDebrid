@@ -170,6 +170,10 @@ class AndroidWebBootstrapTests(unittest.TestCase):
         self.assertIn("NativeAudiobookSearch.search(query)", activity)
         self.assertIn("suspend fun catalogSearch", api)
         self.assertIn('AudiobookSearchMode.GENRE -> "genre"', api)
+        self.assertIn("private fun Audiobook.isCatalogBook()", activity)
+        self.assertIn("findAvailabilityMatch(book, it)", activity)
+        self.assertIn("No downloadable AudiobookBay match was found", activity)
+        self.assertIn("!catalogBook.isCatalogBook()", activity)
 
     def test_native_home_has_personalized_recommendations(self):
         activity = (ROOT / "android/app/src/main/java/com/freedify/android/NativeMainActivity.kt").read_text(encoding="utf-8")
@@ -181,7 +185,7 @@ class AndroidWebBootstrapTests(unittest.TestCase):
         recommendation_section = activity[activity.index('"Books you might like"'):activity.index("private fun SearchScreen")]
         self.assertNotIn("Card(", recommendation_section)
         self.assertIn("LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp))", recommendation_section)
-        self.assertIn('book.id.startsWith("/works/")', activity)
+        self.assertIn("book.isCatalogBook()", activity)
         self.assertIn('searchAudiobookBay("${book.title} ${book.author}")', activity)
 
     def test_native_genre_search_has_live_autocomplete(self):

@@ -226,13 +226,16 @@ class BookDebridViewModel(application: android.app.Application) : AndroidViewMod
         _state.value = _state.value.copy(selectedBook = book, related = emptyList(), error = null)
         viewModelScope.launch {
             val detailed = runCatching {
-                val catalogBook = if (book.id.startsWith("/works/") || book.id.startsWith("openlibrary:")) {
+                val catalogBook = if (book.isCatalogBook()) {
                     searchAudiobookBay("${book.title} ${book.author}")
-                        .let { rankSearchResults(it, book.title, AudiobookSearchMode.TITLE) }
-                        .firstOrNull()
+                        .let { findAvailabilityMatch(book, it) }
                         ?: book
                 } else book
-                val base = if (catalogBook.magnetLink == null && catalogBook.chapters.isEmpty()) api.details(catalogBook.id) else catalogBook
+                val base = if (
+                    !catalogBook.isCatalogBook() &&
+                    catalogBook.magnetLink == null &&
+                    catalogBook.chapters.isEmpty()
+                ) api.details(catalogBook.id) else catalogBook
                 api.enrich(base)
             }.getOrElse { book }
             _state.value = _state.value.copy(selectedBook = detailed)
@@ -269,7 +272,22 @@ class BookDebridViewModel(application: android.app.Application) : AndroidViewMod
                 error = null,
             )
             runCatching {
-                api.download(book, rescan = rescan) { progress, message ->
+                val downloadable = if (!rescan && book.isCatalogBook()) {
+                    val match = searchAudiobookBay("${book.title} ${book.author}")
+                        .let { findAvailabilityMatch(book, it) }
+                        ?: throw ApiException(
+                            "No downloadable AudiobookBay match was found for this catalog book. Try title search or paste its AudiobookBay URL.",
+                        )
+                    val details = if (match.magnetLink == null) api.details(match.id) else match
+                    details.copy(
+                        coverUrl = book.coverUrl.ifBlank { details.coverUrl },
+                        description = book.description.ifBlank { details.description },
+                        genres = normalizeAudiobookGenres(book.genres + details.genres),
+                        rating = book.rating ?: details.rating,
+                        ratingsCount = book.ratingsCount ?: details.ratingsCount,
+                    )
+                } else book
+                api.download(downloadable, rescan = rescan) { progress, message ->
                     _state.value = _state.value.copy(transferProgress = progress, transferMessage = message)
                 }
             }.onSuccess { downloaded ->
@@ -396,6 +414,32 @@ class BookDebridViewModel(application: android.app.Application) : AndroidViewMod
 
 private fun Throwable.userMessage(): String = message?.removePrefix("AllDebrid Error: ")
     ?: "Something went wrong. Please try again."
+
+private fun Audiobook.isCatalogBook(): Boolean =
+    id.startsWith("/works/") || id.startsWith("openlibrary:")
+
+private fun findAvailabilityMatch(book: Audiobook, candidates: List<Audiobook>): Audiobook? {
+    fun normalized(value: String) = value.lowercase().replace(Regex("[^a-z0-9]+"), " ").trim()
+    val wanted = normalized(book.title)
+    if (wanted.isBlank()) return null
+    val wantedTerms = wanted.split(' ').filter { it.length > 1 }.toSet()
+    return candidates.maxByOrNull { candidate ->
+        val title = normalized(candidate.title)
+        val titleTerms = title.split(' ').filter { it.length > 1 }.toSet()
+        when {
+            title == wanted -> 100
+            title.contains(wanted) || wanted.contains(title) -> 80
+            wantedTerms.isNotEmpty() -> 10 * wantedTerms.intersect(titleTerms).size / wantedTerms.size
+            else -> 0
+        }
+    }?.takeIf { candidate ->
+        val titleTerms = normalized(candidate.title).split(' ').filter { it.length > 1 }.toSet()
+        normalized(candidate.title) == wanted ||
+            normalized(candidate.title).contains(wanted) ||
+            wanted.contains(normalized(candidate.title)) ||
+            wantedTerms.intersect(titleTerms).size * 2 >= wantedTerms.size.coerceAtLeast(1)
+    }
+}
 
 private fun rankSearchResults(
     books: List<Audiobook>,
