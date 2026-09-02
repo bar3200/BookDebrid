@@ -14,6 +14,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -785,7 +786,7 @@ private fun BookDetails(state: NativeUiState, model: BookDebridViewModel) {
     val resumeChapter = model.resumeChapter(book)
     val resumePosition = model.resumePosition(book)
     val inLibrary = state.books.any { it.id == book.id }
-    val description = cleanBookDescription(book.description)
+    val description = cleanAudiobookDescription(book.description)
     val numberedOnly = book.chapters.size > 1 && book.chapters.all(::isGenericChapterTitle)
     val namedChapterPreview = book.chapters
         .filterNot(::isGenericChapterTitle)
@@ -797,43 +798,49 @@ private fun BookDetails(state: NativeUiState, model: BookDebridViewModel) {
         item {
             Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp)) {
                 Column(Modifier.padding(16.dp)) {
-                    Row(verticalAlignment = Alignment.Top) {
-                        Cover(book.coverUrl, Modifier.size(width = 96.dp, height = 144.dp))
-                        Column(Modifier.padding(start = 16.dp).weight(1f)) {
-                            Text(
-                                book.title,
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 3,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            Text(
-                                book.author,
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(top = 5.dp),
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            book.rating?.let { rating ->
-                                Surface(
-                                    color = MaterialTheme.colorScheme.primaryContainer,
-                                    shape = RoundedCornerShape(12.dp),
-                                    modifier = Modifier.padding(top = 12.dp),
-                                ) {
-                                    Text(
-                                        "★ %.2f".format(rating),
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                        style = MaterialTheme.typography.labelLarge,
-                                    )
-                                }
-                                book.ratingsCount?.let {
-                                    Text(
-                                        "${compactCount(it)} ratings",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.padding(top = 4.dp),
-                                    )
+                    BoxWithConstraints(Modifier.fillMaxWidth()) {
+                        val compact = maxWidth < 340.dp
+                        val coverWidth = if (compact) 80.dp else 96.dp
+                        val coverHeight = if (compact) 120.dp else 144.dp
+                        val gap = if (compact) 12.dp else 16.dp
+                        Row(verticalAlignment = Alignment.Top) {
+                            Cover(book.coverUrl, Modifier.size(width = coverWidth, height = coverHeight))
+                            Column(Modifier.padding(start = gap).weight(1f)) {
+                                Text(
+                                    book.title,
+                                    style = if (compact) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = if (compact) 4 else 3,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Text(
+                                    book.author,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(top = 5.dp),
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                book.rating?.let { rating ->
+                                    Surface(
+                                        color = MaterialTheme.colorScheme.primaryContainer,
+                                        shape = RoundedCornerShape(12.dp),
+                                        modifier = Modifier.padding(top = 12.dp),
+                                    ) {
+                                        Text(
+                                            "★ %.2f".format(rating),
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                            style = MaterialTheme.typography.labelLarge,
+                                        )
+                                    }
+                                    book.ratingsCount?.let {
+                                        Text(
+                                            "${compactCount(it)} ratings",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.padding(top = 4.dp),
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -879,7 +886,7 @@ private fun BookDetails(state: NativeUiState, model: BookDebridViewModel) {
                 }
                 resumeChapter?.let {
                     Text(
-                        chapterDisplayTitle(it, book.chapters.size),
+                        chapterDisplayTitle(book, it),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -929,7 +936,10 @@ private fun BookDetails(state: NativeUiState, model: BookDebridViewModel) {
                         ) {
                             Column(Modifier.weight(1f)) {
                                 Text("Chapters", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                                Text("${book.chapters.size} chapter markers", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(
+                                    if (book.chapters.size == 1) "Full audiobook" else "${book.chapters.size} chapter markers",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
                             }
                             Icon(
                                 if (chaptersExpanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
@@ -951,12 +961,10 @@ private fun BookDetails(state: NativeUiState, model: BookDebridViewModel) {
                             modifier = Modifier.padding(top = 10.dp),
                         )
                         Column(Modifier.fillMaxWidth().padding(top = 4.dp)) {
-                            TextButton(
+                            if (book.chapters.size > 1) TextButton(
                                 onClick = { chaptersExpanded = !chaptersExpanded },
                                 modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                Text(if (chaptersExpanded) "Hide chapter list" else "Choose a chapter")
-                            }
+                            ) { Text(if (chaptersExpanded) "Hide chapter list" else "Choose a chapter") }
                             TextButton(
                                 onClick = model::rescan,
                                 enabled = state.transferProgress == null,
@@ -970,7 +978,7 @@ private fun BookDetails(state: NativeUiState, model: BookDebridViewModel) {
                     }
                 }
             }
-            if (chaptersExpanded) items(book.chapters, key = { it.id }) { chapter ->
+            if (chaptersExpanded && book.chapters.size > 1) items(book.chapters, key = { it.id }) { chapter ->
                 ChapterRow(book, chapter) { model.play(book, chapter) }
             }
         }
@@ -1032,28 +1040,11 @@ private fun BookManagementDialog(onDismiss: () -> Unit, onRemove: () -> Unit, on
     }
 }
 
-private fun isGenericChapterTitle(chapter: AudiobookChapter): Boolean =
-    chapter.title.trim().matches(Regex("(?i)^(chapter|track|part)\\s*0*\\d+$"))
-
-private fun chapterDisplayTitle(chapter: AudiobookChapter, chapterCount: Int): String =
-    if (isGenericChapterTitle(chapter)) "Chapter ${chapter.number} of $chapterCount" else chapter.title
-
 private fun compactCount(value: Long): String = when {
     value >= 1_000_000 -> "%.1fM".format(value / 1_000_000.0)
     value >= 1_000 -> "%.1fK".format(value / 1_000.0)
     else -> value.toString()
 }
-
-private fun cleanBookDescription(raw: String): String = raw
-    .lineSequence()
-    .map(String::trim)
-    .filter(String::isNotBlank)
-    .filterNot { line ->
-        line.matches(Regex("(?i)^(shared by|posted:|format:|bitrate:|file size:).*")) ||
-            line.matches(Regex("(?i)^M4[AB]\\s*/.*"))
-    }
-    .joinToString(" ")
-    .trim()
 
 @Composable
 private fun SettingsScreen(
@@ -1119,7 +1110,10 @@ private fun BookRow(book: Audiobook, onClick: () -> Unit) {
             Column(Modifier.padding(start = 14.dp).weight(1f)) {
                 Text(book.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 2)
                 Text(book.author, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-                if (book.chapters.isNotEmpty()) Text("${book.chapters.size} chapters", style = MaterialTheme.typography.labelMedium)
+                if (book.chapters.isNotEmpty()) Text(
+                    if (book.chapters.size == 1) "Full audiobook" else "${book.chapters.size} chapters",
+                    style = MaterialTheme.typography.labelMedium,
+                )
             }
         }
     }
@@ -1152,7 +1146,7 @@ private fun ChapterRow(book: Audiobook, chapter: AudiobookChapter, play: () -> U
             Text(chapter.number.toString())
         }
         Column(Modifier.padding(horizontal = 12.dp).weight(1f)) {
-            Text(chapterDisplayTitle(chapter, book.chapters.size), maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(chapterDisplayTitle(book, chapter), maxLines = 2, overflow = TextOverflow.Ellipsis)
             chapter.effectiveDurationSeconds?.let { Text(formatDuration(it), color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
         Icon(Icons.Rounded.PlayArrow, "Play ${chapter.title}")

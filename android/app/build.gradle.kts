@@ -26,8 +26,8 @@ android {
         applicationId = "com.freedify.android"
         minSdk = 24
         targetSdk = 35
-        versionCode = 34
-        versionName = "1.6.6"
+        versionCode = 35
+        versionName = "1.6.7"
 
         ndk {
             abiFilters += listOf("arm64-v8a", "x86_64")
@@ -139,4 +139,5 @@ dependencies {
     implementation("io.coil-kt.coil3:coil-network-okhttp:3.1.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     debugImplementation("androidx.compose.ui:ui-tooling")
+    testImplementation("junit:junit:4.13.2")
 }

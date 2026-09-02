@@ -356,7 +356,7 @@ class PlaybackService : MediaBrowserServiceCompat() {
         _playback.value = NativePlaybackState(
             bookId = book.id,
             chapterId = chapter.id,
-            title = displayChapterTitle(book, chapter),
+            title = chapterDisplayTitle(book, chapter),
             author = book.author,
             bookTitle = book.title,
             coverUrl = book.coverUrl,
@@ -370,14 +370,6 @@ class PlaybackService : MediaBrowserServiceCompat() {
         refreshNotification()
     }
 
-    private fun displayChapterTitle(book: Audiobook, chapter: AudiobookChapter): String {
-        val generic = chapter.title.trim().matches(Regex("(?i)^(chapter|track|part)\\s*0*\\d+$"))
-        if (!generic) return chapter.title
-        val number = chapter.number.takeIf { it > 0 }
-            ?: (book.chapters.indexOfFirst { it.id == chapter.id } + 1).coerceAtLeast(1)
-        return "Chapter $number of ${book.chapters.size}"
-    }
-
     private fun updateMediaSession(
         book: Audiobook,
         chapter: AudiobookChapter,
@@ -389,7 +381,7 @@ class PlaybackService : MediaBrowserServiceCompat() {
         mediaSession.setMetadata(
             MediaMetadataCompat.Builder()
                 .putString(MediaMetadataCompat.METADATA_KEY_MEDIA_ID, chapter.id)
-                .putString(MediaMetadataCompat.METADATA_KEY_TITLE, displayChapterTitle(book, chapter))
+                .putString(MediaMetadataCompat.METADATA_KEY_TITLE, chapterDisplayTitle(book, chapter))
                 .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, book.author)
                 .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, book.title)
                 .putString(MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI, book.coverUrl)
@@ -454,7 +446,7 @@ class PlaybackService : MediaBrowserServiceCompat() {
             _playback.value = NativePlaybackState(
                 bookId = book.id,
                 chapterId = chapter.id,
-                title = displayChapterTitle(book, chapter),
+                title = chapterDisplayTitle(book, chapter),
                 author = book.author,
                 bookTitle = book.title,
                 coverUrl = book.coverUrl,

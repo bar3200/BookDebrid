@@ -69,10 +69,15 @@ data class Audiobook(
     companion object {
         fun fromJson(json: JSONObject): Audiobook {
             val chaptersJson = json.optJSONArray("chapters") ?: JSONArray()
-            return Audiobook(
-                id = json.optString("id"),
+            val metadata = normalizeAudiobookIdentity(
                 title = json.optString("title", json.optString("name", "Untitled")),
                 author = json.optString("author", json.optString("artist", "Unknown author")),
+                description = json.optString("description"),
+            )
+            return Audiobook(
+                id = json.optString("id"),
+                title = metadata.first,
+                author = metadata.second,
                 coverUrl = json.optString("cover_url", json.optString("artwork")),
                 description = json.optString("description"),
                 genres = normalizeAudiobookGenres(json.optJSONArray("genres").toStringList()),
@@ -87,15 +92,68 @@ data class Audiobook(
             )
         }
 
-        fun fromSearch(json: JSONObject) = Audiobook(
-            id = json.optString("id"),
-            title = json.optString("title", json.optString("name", "Untitled")),
-            author = json.optString("author", json.optString("artist", "Unknown author")),
-            coverUrl = json.optString("cover_image", json.optString("cover_url")),
-            description = json.optString("description"),
-            genres = normalizeAudiobookGenres(json.optJSONArray("genres").toStringList()),
-        )
+        fun fromSearch(json: JSONObject): Audiobook {
+            val description = json.optString("description")
+            val metadata = normalizeAudiobookIdentity(
+                title = json.optString("title", json.optString("name", "Untitled")),
+                author = json.optString("author", json.optString("artist", "Unknown author")),
+                description = description,
+            )
+            return Audiobook(
+                id = json.optString("id"),
+                title = metadata.first,
+                author = metadata.second,
+                coverUrl = json.optString("cover_image", json.optString("cover_url")),
+                description = description,
+                genres = normalizeAudiobookGenres(json.optJSONArray("genres").toStringList()),
+            )
+        }
     }
+}
+
+private val PLACEHOLDER_AUTHORS = setOf("", "audiobook", "audiobookbay", "unknown", "unknown author")
+
+/** Cleans common AudiobookBay identity artifacts without guessing missing metadata. */
+internal fun normalizeAudiobookIdentity(title: String, author: String, description: String): Pair<String, String> {
+    var cleanTitle = title.trim().replace(Regex("(?i)\\s*\\(chapteri[sz]ed\\)\\s*"), " ").trim()
+    var cleanAuthor = author.trim()
+    if (cleanAuthor.lowercase() in PLACEHOLDER_AUTHORS) {
+        cleanAuthor = Regex("(?i)written by\\s+([^\\n]+?)(?=\\s+(?:read by|format:|bitrate:)|$)")
+            .find(description)?.groupValues?.getOrNull(1)?.trim().orEmpty()
+        if (cleanAuthor.isBlank()) {
+            val suffix = Regex("\\s+[-–—]\\s+([^–—-]{2,80})$").find(cleanTitle)
+            cleanAuthor = suffix?.groupValues?.getOrNull(1)?.trim().orEmpty()
+            if (suffix != null) cleanTitle = cleanTitle.removeRange(suffix.range).trim()
+        }
+    }
+    if (cleanAuthor.isNotBlank()) {
+        cleanTitle = cleanTitle.replace(Regex("(?i)\\s+[-–—]\\s+${Regex.escape(cleanAuthor)}$"), "").trim()
+    }
+    return cleanTitle.ifBlank { "Untitled" } to cleanAuthor.ifBlank { "Unknown author" }
+}
+
+internal fun cleanAudiobookDescription(raw: String): String {
+    val trimmed = raw.trim()
+    if (trimmed.matches(Regex("(?is)^shared by\\s*:?.*?(?:posted:|format:|bitrate:|file size:).*$"))) return ""
+    return trimmed.lineSequence()
+        .map(String::trim)
+        .filter(String::isNotBlank)
+        .filterNot { line ->
+            line.matches(Regex("(?i)^(shared by|posted:|format:|bitrate:|file size:).*")) ||
+                line.matches(Regex("(?i)^M4[AB]\\s*/.*"))
+        }
+        .joinToString(" ")
+        .trim()
+}
+
+internal fun isGenericChapterTitle(chapter: AudiobookChapter): Boolean =
+    chapter.title.trim().matches(Regex("(?i)^(chapter|track|part)\\s*0*\\d+$"))
+
+internal fun chapterDisplayTitle(book: Audiobook, chapter: AudiobookChapter): String {
+    if (book.chapters.size == 1) return "Full audiobook"
+    return if (isGenericChapterTitle(chapter)) {
+        "Chapter ${chapter.number} of ${book.chapters.size}"
+    } else chapter.title.replace('_', ' ').trim()
 }
 
 internal val CANONICAL_AUDIOBOOK_GENRES = listOf(
