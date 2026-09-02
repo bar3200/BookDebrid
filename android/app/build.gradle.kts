@@ -26,8 +26,8 @@ android {
         applicationId = "com.freedify.android"
         minSdk = 24
         targetSdk = 35
-        versionCode = 20
-        versionName = "1.5.2"
+        versionCode = 21
+        versionName = "1.5.3"
 
         ndk {
             abiFilters += listOf("arm64-v8a", "x86_64")
@@ -133,6 +133,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
     implementation("androidx.navigation:navigation-compose:2.8.9")
     implementation("androidx.media:media:1.7.0")
+    implementation("androidx.media3:media3-exoplayer:1.8.0")
     implementation("io.coil-kt.coil3:coil-compose:3.1.0")
     implementation("io.coil-kt.coil3:coil-network-okhttp:3.1.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")

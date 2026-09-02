@@ -85,11 +85,12 @@ class AndroidWebBootstrapTests(unittest.TestCase):
         self.assertIn("class PlaybackService : MediaBrowserServiceCompat()", service)
         self.assertIn('browsable(CONTINUE_ID, "Continue listening"', service)
         self.assertIn('items += browsable(BOOKS_ID, "My Books"', service)
-        self.assertIn("AudioManager.ACTION_AUDIO_BECOMING_NOISY", service)
-        self.assertIn("AudioAttributes.CONTENT_TYPE_SPEECH", service)
-        self.assertIn("setAcceptsDelayedFocusGain(true)", service)
-        self.assertIn("AudioManager.AUDIOFOCUS_REQUEST_GRANTED -> startPlayerWithFocus()", service)
-        self.assertNotIn("prepared.playbackParams = prepared.playbackParams.setSpeed", service)
+        self.assertIn("ExoPlayer.Builder(this).build()", service)
+        self.assertIn("setHandleAudioBecomingNoisy(true)", service)
+        self.assertIn("C.AUDIO_CONTENT_TYPE_SPEECH", service)
+        self.assertIn("setAudioAttributes(", service)
+        self.assertIn("true,", service)
+        self.assertIn("playbackErrorMessage(error)", service)
         self.assertIn("intent.getBooleanExtra(EXTRA_RESTART, false)", service)
         self.assertIn("private fun FullPlayer", activity)
         self.assertIn("PlaybackService.setSpeed(speed)", activity)
@@ -112,6 +113,8 @@ class AndroidWebBootstrapTests(unittest.TestCase):
         self.assertIn("fun imageUrl(rawUrl: String)", api)
         self.assertIn("/api/proxy_image?url=", api)
         self.assertIn("BookDebridApi.imageUrl(url)", activity)
+        self.assertIn("contentScale = ContentScale.Crop", activity)
+        self.assertIn("aspectRatio(2f / 3f)", activity)
 
     def test_android_uses_full_size_adaptive_bookdebrid_icon(self):
         manifest = (

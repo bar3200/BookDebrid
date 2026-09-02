@@ -4,14 +4,8 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
-import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
-import android.media.AudioAttributes
-import android.media.AudioFocusRequest
-import android.media.AudioManager
-import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -28,6 +22,13 @@ import androidx.core.content.ContextCompat
 import androidx.media.MediaBrowserServiceCompat
 import androidx.media.app.NotificationCompat.MediaStyle
 import androidx.media.session.MediaButtonReceiver
+import androidx.media3.common.AudioAttributes
+import androidx.media3.common.C
+import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.PlaybackParameters
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -47,17 +48,14 @@ data class NativePlaybackState(
     val error: String? = null,
 )
 
-class PlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFocusChangeListener {
+class PlaybackService : MediaBrowserServiceCompat() {
     private lateinit var mediaSession: MediaSessionCompat
-    private lateinit var audioManager: AudioManager
     private lateinit var store: AudiobookStore
     private val handler = Handler(Looper.getMainLooper())
-    private var player: MediaPlayer? = null
+    private var player: ExoPlayer? = null
     private var currentBook: Audiobook? = null
     private var currentChapter: AudiobookChapter? = null
     private var foreground = false
-    private var resumeAfterFocusGain = false
-    private var audioFocusRequest: AudioFocusRequest? = null
     private var legacyTitle = "BookDebrid"
     private var legacyAuthor = "Ready to play"
     private var legacyAlbum = ""
@@ -74,7 +72,7 @@ class PlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFocusCh
             val chapter = currentChapter ?: return
             if (mediaPlayer.isPlaying) {
                 val relative = (mediaPlayer.currentPosition - chapter.startMs()).coerceAtLeast(0L)
-                val duration = chapter.durationMs(mediaPlayer.duration.toLong())
+                val duration = chapter.durationMs(mediaPlayer.duration)
                 if (duration > 0 && relative >= duration - 250) {
                     playAdjacent(1)
                     return
@@ -90,19 +88,11 @@ class PlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFocusCh
         }
     }
 
-    private val noisyReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action == AudioManager.ACTION_AUDIO_BECOMING_NOISY) pauseNative()
-        }
-    }
-
     override fun onCreate() {
         super.onCreate()
         activeInstance = this
         store = AudiobookStore.get(this)
-        audioManager = getSystemService(AudioManager::class.java)
         createNotificationChannel()
-        registerNoisyReceiver()
         mediaSession = MediaSessionCompat(this, "BookDebridPlayback").apply {
             setSessionActivity(
                 PendingIntent.getActivity(
@@ -187,30 +177,10 @@ class PlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFocusCh
         result.sendResult(items.toMutableList())
     }
 
-    override fun onAudioFocusChange(focusChange: Int) {
-        when (focusChange) {
-            AudioManager.AUDIOFOCUS_GAIN -> if (resumeAfterFocusGain) {
-                resumeAfterFocusGain = false
-                startPlayerWithFocus()
-            }
-            AudioManager.AUDIOFOCUS_LOSS -> {
-                resumeAfterFocusGain = false
-                pauseNative(abandonFocus = true)
-            }
-            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT,
-            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
-                resumeAfterFocusGain = player?.isPlaying == true
-                pauseNative(abandonFocus = false)
-            }
-        }
-    }
-
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
         persist(_playback.value.positionMs)
         releasePlayer()
-        abandonAudioFocus()
-        runCatching { unregisterReceiver(noisyReceiver) }
         mediaSession.isActive = false
         mediaSession.release()
         store.removeListener(storeListener)
@@ -257,34 +227,58 @@ class PlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFocusCh
 
     private fun preparePlayer(book: Audiobook, chapter: AudiobookChapter, resumeMs: Long) {
         releasePlayer()
-        val mediaPlayer = MediaPlayer()
+        val mediaPlayer = ExoPlayer.Builder(this).build()
         player = mediaPlayer
         mediaPlayer.setAudioAttributes(
             AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_MEDIA)
-                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                .setUsage(C.USAGE_MEDIA)
+                .setContentType(C.AUDIO_CONTENT_TYPE_SPEECH)
                 .build(),
+            true,
         )
-        mediaPlayer.setOnPreparedListener { prepared ->
-            val target = (chapter.startMs() + resumeMs).coerceAtLeast(chapter.startMs())
-            prepared.seekTo(target.coerceAtMost(prepared.duration.toLong()).toInt())
-            when (requestAudioFocus()) {
-                AudioManager.AUDIOFOCUS_REQUEST_GRANTED -> startPlayerWithFocus()
-                AudioManager.AUDIOFOCUS_REQUEST_DELAYED -> {
-                    resumeAfterFocusGain = true
-                    publishNativeState(resumeMs, chapter.durationMs(prepared.duration.toLong()), buffering = true)
+        mediaPlayer.setHandleAudioBecomingNoisy(true)
+        mediaPlayer.addListener(object : Player.Listener {
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                when (playbackState) {
+                    Player.STATE_READY -> {
+                        val duration = chapter.durationMs(mediaPlayer.duration)
+                        publishNativeState(
+                            (mediaPlayer.currentPosition - chapter.startMs()).coerceAtLeast(0L),
+                            duration,
+                            playing = mediaPlayer.isPlaying,
+                        )
+                    }
+                    Player.STATE_ENDED -> playAdjacent(1)
+                    Player.STATE_BUFFERING -> publishNativeState(
+                        (mediaPlayer.currentPosition - chapter.startMs()).coerceAtLeast(0L),
+                        chapter.durationMs(mediaPlayer.duration),
+                        buffering = true,
+                    )
                 }
-                else -> setError("Playback was paused because Android could not grant audio focus. Pause the other audio app and try again.")
             }
-        }
-        mediaPlayer.setOnCompletionListener { playAdjacent(1) }
-        mediaPlayer.setOnErrorListener { _, what, extra ->
-            setError("Playback failed ($what/$extra). Check the AllDebrid transfer and try again.")
-            true
-        }
+
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                publishNativeState(
+                    (mediaPlayer.currentPosition - chapter.startMs()).coerceAtLeast(0L),
+                    chapter.durationMs(mediaPlayer.duration),
+                    playing = isPlaying,
+                )
+                if (isPlaying) {
+                    handler.removeCallbacks(progressTicker)
+                    handler.post(progressTicker)
+                }
+            }
+
+            override fun onPlayerError(error: PlaybackException) {
+                setError(playbackErrorMessage(error))
+            }
+        })
         runCatching {
-            mediaPlayer.setDataSource(this, Uri.parse(BookDebridApi.streamUrl(chapter)))
-            mediaPlayer.prepareAsync()
+            mediaPlayer.setMediaItem(MediaItem.fromUri(BookDebridApi.streamUrl(chapter)))
+            mediaPlayer.seekTo(chapter.startMs() + resumeMs)
+            mediaPlayer.playbackParameters = PlaybackParameters(_playback.value.speed)
+            mediaPlayer.prepare()
+            mediaPlayer.playWhenReady = true
         }.onFailure { setError(it.message ?: "The audiobook stream could not be opened") }
         updateMediaSession(book, chapter, resumeMs, chapter.effectiveDurationSeconds?.times(1000)?.toLong() ?: 0L, false, true)
     }
@@ -298,41 +292,13 @@ class PlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFocusCh
             }
             return
         }
-        when (requestAudioFocus()) {
-            AudioManager.AUDIOFOCUS_REQUEST_GRANTED -> startPlayerWithFocus()
-            AudioManager.AUDIOFOCUS_REQUEST_DELAYED -> {
-                resumeAfterFocusGain = true
-                publishNativeState(_playback.value.positionMs, _playback.value.durationMs, buffering = true)
-            }
-            else -> setError("Playback was paused because Android could not grant audio focus. Pause the other audio app and try again.")
-        }
+        mediaPlayer.play()
     }
 
-    private fun startPlayerWithFocus() {
-        val mediaPlayer = player ?: return
-        runCatching {
-            mediaPlayer.start()
-            val speed = _playback.value.speed
-            if (speed != 1f) mediaPlayer.playbackParams = mediaPlayer.playbackParams.setSpeed(speed)
-        }.onFailure {
-            setError(it.message ?: "Android could not start audiobook playback")
-            return
-        }
-        val chapter = currentChapter ?: return
-        publishNativeState(
-            _playback.value.positionMs,
-            chapter.durationMs(mediaPlayer.duration.toLong()),
-            playing = true,
-        )
-        handler.removeCallbacks(progressTicker)
-        handler.post(progressTicker)
-    }
-
-    private fun pauseNative(abandonFocus: Boolean = true) {
-        player?.takeIf { it.isPlaying }?.pause()
+    private fun pauseNative() {
+        player?.pause()
         persist(_playback.value.positionMs)
         publishNativeState(_playback.value.positionMs, _playback.value.durationMs, playing = false)
-        if (abandonFocus) abandonAudioFocus()
     }
 
     private fun stopNative() {
@@ -345,18 +311,16 @@ class PlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFocusCh
     private fun seekNative(relativeMs: Long) {
         val mediaPlayer = player ?: return
         val chapter = currentChapter ?: return
-        val duration = chapter.durationMs(mediaPlayer.duration.toLong())
+        val duration = chapter.durationMs(mediaPlayer.duration)
         val safeRelative = relativeMs.coerceIn(0L, duration.coerceAtLeast(0L))
-        mediaPlayer.seekTo((chapter.startMs() + safeRelative).toInt())
+        mediaPlayer.seekTo(chapter.startMs() + safeRelative)
         publishNativeState(safeRelative, duration, playing = mediaPlayer.isPlaying)
         persist(safeRelative)
     }
 
     private fun changeSpeed(speed: Float) {
         val safeSpeed = speed.coerceIn(0.5f, 3f)
-        player?.takeIf { it.isPlaying }?.let { mediaPlayer ->
-            runCatching { mediaPlayer.playbackParams = mediaPlayer.playbackParams.setSpeed(safeSpeed) }
-        }
+        player?.playbackParameters = PlaybackParameters(safeSpeed)
         _playback.value = _playback.value.copy(speed = safeSpeed)
         persist(_playback.value.positionMs)
         currentBook?.let { book -> currentChapter?.let { chapter ->
@@ -515,38 +479,23 @@ class PlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFocusCh
         refreshNotification()
     }
 
-    private fun requestAudioFocus(): Int {
-        val result = if (Build.VERSION.SDK_INT >= 26) {
-            val request = audioFocusRequest ?: AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
-                .setAudioAttributes(
-                    AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build(),
-                )
-                .setOnAudioFocusChangeListener(this)
-                .setWillPauseWhenDucked(true)
-                .setAcceptsDelayedFocusGain(true)
-                .build().also { audioFocusRequest = it }
-            audioManager.requestAudioFocus(request)
-        } else {
-            @Suppress("DEPRECATION")
-            audioManager.requestAudioFocus(this, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN)
-        }
-        return result
-    }
-
-    private fun abandonAudioFocus() {
-        if (Build.VERSION.SDK_INT >= 26) audioFocusRequest?.let(audioManager::abandonAudioFocusRequest)
-        else {
-            @Suppress("DEPRECATION")
-            audioManager.abandonAudioFocus(this)
-        }
-    }
-
     private fun releasePlayer() {
         handler.removeCallbacks(progressTicker)
-        player?.reset()
         player?.release()
         player = null
+    }
+
+    private fun playbackErrorMessage(error: PlaybackException): String {
+        val causeMessages = generateSequence<Throwable>(error) { it.cause }
+            .mapNotNull { it.message?.takeIf(String::isNotBlank) }
+            .distinct()
+            .take(3)
+            .joinToString(" — ")
+        return if (causeMessages.isBlank()) {
+            "Audiobook playback failed (${error.errorCodeName})"
+        } else {
+            "Audiobook playback failed: $causeMessages"
+        }
     }
 
     private fun rootItems(): List<MediaBrowserCompat.MediaItem> {
@@ -648,15 +597,6 @@ class PlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFocusCh
                     setShowBadge(false)
                 },
             )
-        }
-    }
-
-    private fun registerNoisyReceiver() {
-        val filter = IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY)
-        if (Build.VERSION.SDK_INT >= 33) registerReceiver(noisyReceiver, filter, RECEIVER_NOT_EXPORTED)
-        else {
-            @Suppress("DEPRECATION")
-            registerReceiver(noisyReceiver, filter)
         }
     }
 

@@ -11,6 +11,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -72,6 +73,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
@@ -598,6 +600,7 @@ private fun Cover(url: String, modifier: Modifier) {
             model = model,
             contentDescription = null,
             modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Crop,
             onError = { failed = true },
         )
     }
@@ -650,7 +653,7 @@ private fun FullPlayer(playback: NativePlaybackState, close: () -> Unit) {
                     Text("Now playing", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                 }
                 Spacer(Modifier.height(22.dp))
-                Cover(playback.coverUrl, Modifier.fillMaxWidth().weight(1f))
+                Cover(playback.coverUrl, Modifier.fillMaxWidth(0.78f).aspectRatio(2f / 3f))
                 Spacer(Modifier.height(24.dp))
                 Text(playback.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Text(playback.bookTitle, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
