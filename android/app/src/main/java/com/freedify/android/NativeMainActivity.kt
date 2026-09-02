@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -102,9 +103,27 @@ import kotlinx.coroutines.launch
 
 class NativeMainActivity : ComponentActivity() {
     @Volatile private var keepSplashOnScreen = true
+    private var pendingUiQaExport: String? = null
     private val notificationPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) {}
+    private val uiQaExportDocument = registerForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json"),
+    ) { uri ->
+        val payload = pendingUiQaExport
+        pendingUiQaExport = null
+        if (uri != null && payload != null) {
+            val saved = runCatching {
+                contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { it.write(payload) }
+                    ?: error("Could not open the selected file")
+            }.isSuccess
+            Toast.makeText(
+                this,
+                if (saved) "UI QA data exported" else "Could not export UI QA data",
+                Toast.LENGTH_LONG,
+            ).show()
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val splashScreen = installSplashScreen()
@@ -122,6 +141,10 @@ class NativeMainActivity : ComponentActivity() {
                 BookDebridApp(
                     model = model,
                     openLegacy = { startActivity(Intent(this, MainActivity::class.java)) },
+                    exportUiQaData = {
+                        pendingUiQaExport = UiQaExport.create(applicationContext)
+                        uiQaExportDocument.launch("bookdebrid-ui-qa.json")
+                    },
                     onStartupResolved = { keepSplashOnScreen = false },
                 )
             }
@@ -497,6 +520,7 @@ private fun BookDebridTheme(content: @Composable () -> Unit) {
 private fun BookDebridApp(
     model: BookDebridViewModel,
     openLegacy: () -> Unit,
+    exportUiQaData: () -> Unit,
     onStartupResolved: () -> Unit,
 ) {
     val state by model.state.collectAsState()
@@ -564,7 +588,7 @@ private fun BookDebridApp(
                 AppDestination.HOME -> HomeScreen(state, model)
                 AppDestination.SEARCH -> SearchScreen(state, model)
                 AppDestination.LIBRARY -> LibraryScreen(state.books, model)
-                AppDestination.SETTINGS -> SettingsScreen(model::saveApiKey, openLegacy)
+                AppDestination.SETTINGS -> SettingsScreen(model::saveApiKey, openLegacy, exportUiQaData)
             }
             (state.error ?: playback.error)?.let { message ->
                 Surface(
@@ -1032,7 +1056,11 @@ private fun cleanBookDescription(raw: String): String = raw
     .trim()
 
 @Composable
-private fun SettingsScreen(onSave: (String) -> Unit, openLegacy: () -> Unit) {
+private fun SettingsScreen(
+    onSave: (String) -> Unit,
+    openLegacy: () -> Unit,
+    exportUiQaData: () -> Unit,
+) {
     var replacementKey by remember { mutableStateOf("") }
     LazyColumn(contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item { Text("AllDebrid", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
@@ -1052,6 +1080,17 @@ private fun SettingsScreen(onSave: (String) -> Unit, openLegacy: () -> Unit) {
             }
         }
         item { Text("Advanced", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 18.dp)) }
+        item {
+            OutlinedButton(onClick = exportUiQaData, modifier = Modifier.fillMaxWidth()) {
+                Text("Export UI QA data")
+            }
+        }
+        item {
+            Text(
+                "Exports device layout details and book display metadata only. API keys and AllDebrid links are excluded.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         item {
             OutlinedButton(onClick = openLegacy, modifier = Modifier.fillMaxWidth()) {
                 Icon(Icons.Rounded.MoreHoriz, null)

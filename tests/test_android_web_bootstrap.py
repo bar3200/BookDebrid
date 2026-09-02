@@ -254,6 +254,17 @@ class AndroidWebBootstrapTests(unittest.TestCase):
         self.assertIn('@drawable/ic_bookdebrid_foreground', adaptive)
         self.assertTrue((ROOT / "android/app/src/main/res/drawable-xxxhdpi/ic_bookdebrid_foreground.png").is_file())
 
+    def test_ui_qa_export_contains_display_data_without_debrid_secrets(self):
+        activity = (ROOT / "android/app/src/main/java/com/freedify/android/NativeMainActivity.kt").read_text(encoding="utf-8")
+        exporter = (ROOT / "android/app/src/main/java/com/freedify/android/UiQaExport.kt").read_text(encoding="utf-8")
+
+        self.assertIn('"Export UI QA data"', activity)
+        self.assertIn("ActivityResultContracts.CreateDocument", activity)
+        for field in ('"font_scale"', '"width_px"', '"books"', '"chapters"', '"cover_url"'):
+            self.assertIn(field, exporter)
+        for secret in ('"api_key"', '"magnet_link"', '"debrid_id"', '"source_id"'):
+            self.assertNotIn(secret, exporter)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -18,6 +18,14 @@ APP_NAME = "Freedify"
 AUDIO_EXTENSIONS = (".mp3", ".m4b", ".m4a", ".flac", ".wav", ".ogg", ".aac", ".opus")
 
 
+def _object_list(value) -> list[dict]:
+    if isinstance(value, dict):
+        return [value]
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, dict)]
+
+
 def _natural_path_key(path: str):
     return [int(part) if part.isdigit() else part for part in re.split(r"(\d+)", path.lower())]
 
@@ -77,16 +85,26 @@ async def _make_request(
     except ValueError as exc:
         raise HTTPException(status_code=502, detail="AllDebrid returned an invalid response") from exc
 
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=502, detail="AllDebrid returned an invalid response")
+
     if payload.get("status") != "success":
-        error = payload.get("error") or {}
-        message = error.get("message") or payload.get("message") or "Unknown AllDebrid error"
-        code = error.get("code")
+        error = payload.get("error")
+        if isinstance(error, dict):
+            message = error.get("message") or payload.get("message") or "Unknown AllDebrid error"
+            code = error.get("code")
+        else:
+            message = str(error or payload.get("message") or "Unknown AllDebrid error")
+            code = None
         detail = f"AllDebrid Error: {message}"
         if code:
             detail += f" ({code})"
         raise HTTPException(status_code=400, detail=detail)
 
-    return payload.get("data", {})
+    data = payload.get("data", {})
+    if not isinstance(data, dict):
+        raise HTTPException(status_code=502, detail="AllDebrid returned invalid response data")
+    return data
 
 
 async def create_transfer(magnet_link: str):
@@ -94,16 +112,18 @@ async def create_transfer(magnet_link: str):
     data = await _make_request(
         "/v4/magnet/upload", method="POST", data={"magnets[]": magnet_link}
     )
-    magnets = data.get("magnets", [])
+    magnets = _object_list(data.get("magnets"))
     if not magnets:
         raise HTTPException(status_code=502, detail="AllDebrid did not return a magnet")
 
     magnet = magnets[0]
+    if not isinstance(magnet, dict):
+        raise HTTPException(status_code=502, detail="AllDebrid returned invalid magnet data")
     if magnet.get("error"):
         error = magnet["error"]
         raise HTTPException(
             status_code=400,
-            detail=f"AllDebrid Error: {error.get('message', 'Magnet upload failed')}",
+            detail=f"AllDebrid Error: {_external_error_message(error, 'Magnet upload failed')}",
         )
     return {
         "status": "success",
@@ -111,6 +131,12 @@ async def create_transfer(magnet_link: str):
         "name": magnet.get("name"),
         "ready": bool(magnet.get("ready")),
     }
+
+
+def _external_error_message(error, fallback: str) -> str:
+    if isinstance(error, dict):
+        return str(error.get("message") or fallback)
+    return str(error or fallback)
 
 
 def _normalise_transfer(magnet: dict) -> dict:
@@ -140,7 +166,7 @@ async def check_transfer_status(transfer_id: str | None = None):
     # embedded Android environments because it avoids a fresh form-body upload
     # on every polling request.
     data = await _make_request("/v4.1/magnet/status", params=params)
-    transfers = [_normalise_transfer(item) for item in data.get("magnets", [])]
+    transfers = [_normalise_transfer(item) for item in _object_list(data.get("magnets"))]
     if transfer_id:
         return transfers[0] if transfers else None
     return transfers
@@ -149,7 +175,12 @@ async def check_transfer_status(transfer_id: str | None = None):
 def _flatten_files(nodes: list, path: str = "") -> list[dict]:
     """Flatten AllDebrid's nested n/e/s/l magnet tree."""
     files = []
+    if isinstance(nodes, dict):
+        nodes = [nodes]
     for node in nodes or []:
+        if not isinstance(node, dict):
+            logger.warning("Ignoring malformed AllDebrid file entry: %r", type(node).__name__)
+            continue
         name = node.get("n", "")
         item_path = f"{path}/{name}" if path else name
         if isinstance(node.get("e"), list):
@@ -188,13 +219,18 @@ async def list_folder_contents(magnet_id: str):
     data = await _make_request(
         "/v4/magnet/files", method="POST", data={"id[]": magnet_id}
     )
-    magnets = data.get("magnets", [])
+    magnets = _object_list(data.get("magnets"))
     if not magnets:
         raise HTTPException(status_code=404, detail="AllDebrid magnet not found")
     magnet = magnets[0]
+    if not isinstance(magnet, dict):
+        raise HTTPException(status_code=502, detail="AllDebrid returned invalid magnet file data")
     if magnet.get("error"):
         error = magnet["error"]
-        raise HTTPException(status_code=400, detail=error.get("message", "Could not list magnet files"))
+        raise HTTPException(
+            status_code=400,
+            detail=_external_error_message(error, "Could not list magnet files"),
+        )
 
     audio_files = []
     for item in _flatten_files(magnet.get("files", [])):
@@ -239,7 +275,7 @@ async def search_my_files(query: str):
     data = await _make_request("/v4.1/magnet/status", params={"status": "ready"})
     terms = [term for term in query.lower().split() if term]
     results = []
-    for magnet in data.get("magnets", []):
+    for magnet in _object_list(data.get("magnets")):
         name = magnet.get("filename") or magnet.get("name") or ""
         if not terms or all(term in name.lower() for term in terms):
             results.append(
@@ -308,7 +344,7 @@ async def refresh_link_by_filename(filename: str) -> str | None:
         data = await _make_request(
             "/v4.1/magnet/status", method="POST", data={"status": "ready"}
         )
-        for magnet in data.get("magnets", []):
+        for magnet in _object_list(data.get("magnets")):
             files = await list_folder_contents(str(magnet["id"]))
             for item in files["audio_files"]:
                 if item["name"].lower() == clean_name:
