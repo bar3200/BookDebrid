@@ -116,6 +116,29 @@ class AndroidWebBootstrapTests(unittest.TestCase):
         self.assertIn("contentScale = ContentScale.Crop", activity)
         self.assertIn("aspectRatio(2f / 3f)", activity)
 
+    def test_native_startup_and_playback_show_platform_loading_ui(self):
+        gradle = (ROOT / "android/app/build.gradle.kts").read_text(encoding="utf-8")
+        manifest = (ROOT / "android/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
+        themes = (ROOT / "android/app/src/main/res/values/themes.xml").read_text(encoding="utf-8")
+        activity = (ROOT / "android/app/src/main/java/com/freedify/android/NativeMainActivity.kt").read_text(encoding="utf-8")
+        service = (ROOT / "android/app/src/main/java/com/freedify/android/PlaybackService.kt").read_text(encoding="utf-8")
+
+        self.assertIn("core-splashscreen", gradle)
+        self.assertIn('android:theme="@style/Theme.BookDebrid.Splash"', manifest)
+        self.assertIn('name="Theme.BookDebrid.Splash"', themes)
+        self.assertIn("installSplashScreen()", activity)
+        self.assertGreaterEqual(activity.count("if (playback.buffering)"), 2)
+        self.assertIn("mediaPlayer.playbackState == Player.STATE_BUFFERING", service)
+
+    def test_native_library_prefers_descriptive_chapter_metadata(self):
+        api = (ROOT / "android/app/src/main/java/com/freedify/android/BookDebridApi.kt").read_text(encoding="utf-8")
+        store = (ROOT / "android/app/src/main/java/com/freedify/android/AudiobookStore.kt").read_text(encoding="utf-8")
+
+        self.assertIn('listOf("title", "name", "label")', api)
+        self.assertIn("val transferId = book.debridId ?: run", api)
+        self.assertIn("chapterTitleScore(candidate.chapters) > chapterTitleScore(saved.chapters)", store)
+        self.assertIn("chapters = candidate.chapters", store)
+
     def test_android_uses_full_size_adaptive_bookdebrid_icon(self):
         manifest = (
             ROOT / "android/app/src/main/AndroidManifest.xml"

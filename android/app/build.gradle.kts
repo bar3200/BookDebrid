@@ -26,8 +26,8 @@ android {
         applicationId = "com.freedify.android"
         minSdk = 24
         targetSdk = 35
-        versionCode = 21
-        versionName = "1.5.3"
+        versionCode = 22
+        versionName = "1.5.4"
 
         ndk {
             abiFilters += listOf("arm64-v8a", "x86_64")
@@ -122,6 +122,7 @@ chaquopy {
 
 dependencies {
     implementation("androidx.core:core-ktx:1.15.0")
+    implementation("androidx.core:core-splashscreen:1.0.1")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.activity:activity-compose:1.10.1")
     implementation(platform("androidx.compose:compose-bom:2025.04.01"))

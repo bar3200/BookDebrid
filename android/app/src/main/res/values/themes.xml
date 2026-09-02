@@ -9,4 +9,10 @@
         <item name="android:windowActionModeOverlay">true</item>
         <item name="android:windowLightStatusBar">false</item>
     </style>
+
+    <style name="Theme.BookDebrid.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/bookdebrid_icon_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_bookdebrid</item>
+        <item name="postSplashScreenTheme">@style/Theme.Freedify</item>
+    </style>
 </resources>

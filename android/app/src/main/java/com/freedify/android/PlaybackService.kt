@@ -262,6 +262,7 @@ class PlaybackService : MediaBrowserServiceCompat() {
                     (mediaPlayer.currentPosition - chapter.startMs()).coerceAtLeast(0L),
                     chapter.durationMs(mediaPlayer.duration),
                     playing = isPlaying,
+                    buffering = mediaPlayer.playbackState == Player.STATE_BUFFERING,
                 )
                 if (isPlaying) {
                     handler.removeCallbacks(progressTicker)

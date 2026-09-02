@@ -87,8 +87,29 @@ class AudiobookStore private constructor(context: Context) {
             ).takeIf { it.id.isNotBlank() }
         }
         val existing = books().associateBy { it.id }
-        replaceAll(imported.map { candidate -> existing[candidate.id]?.takeIf { it.chapters.isNotEmpty() } ?: candidate } +
+        replaceAll(imported.map { candidate ->
+            val saved = existing[candidate.id]
+            when {
+                saved == null -> candidate
+                chapterTitleScore(candidate.chapters) > chapterTitleScore(saved.chapters) -> saved.copy(
+                    title = candidate.title,
+                    author = candidate.author,
+                    coverUrl = candidate.coverUrl.ifBlank { saved.coverUrl },
+                    description = candidate.description.ifBlank { saved.description },
+                    genres = candidate.genres.ifEmpty { saved.genres },
+                    magnetLink = candidate.magnetLink ?: saved.magnetLink,
+                    debridId = candidate.debridId ?: saved.debridId,
+                    chapters = candidate.chapters,
+                )
+                else -> saved
+            }
+        } +
             books().filter { book -> imported.none { it.id == book.id } })
+    }
+
+    private fun chapterTitleScore(chapters: List<AudiobookChapter>): Int = chapters.count { chapter ->
+        val normalized = chapter.title.trim()
+        normalized.isNotBlank() && !normalized.matches(Regex("(?i)^chapter\\s*\\d*$"))
     }
 
     private fun writeBooks(books: List<Audiobook>) {

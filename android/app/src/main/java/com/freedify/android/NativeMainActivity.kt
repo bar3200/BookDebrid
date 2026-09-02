@@ -64,6 +64,7 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -83,6 +84,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -90,12 +92,15 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 class NativeMainActivity : ComponentActivity() {
+    @Volatile private var keepSplashOnScreen = true
     private val notificationPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) {}
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        val splashScreen = installSplashScreen()
         super.onCreate(savedInstanceState)
+        splashScreen.setKeepOnScreenCondition { keepSplashOnScreen }
         NativeAudiobookSearch.attach(this)
         if (Build.VERSION.SDK_INT >= 33 &&
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
@@ -107,6 +112,7 @@ class NativeMainActivity : ComponentActivity() {
                 BookDebridApp(
                     model = model,
                     openLegacy = { startActivity(Intent(this, MainActivity::class.java)) },
+                    onStartupResolved = { keepSplashOnScreen = false },
                 )
             }
         }
@@ -277,10 +283,18 @@ private fun BookDebridTheme(content: @Composable () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun BookDebridApp(model: BookDebridViewModel, openLegacy: () -> Unit) {
+private fun BookDebridApp(
+    model: BookDebridViewModel,
+    openLegacy: () -> Unit,
+    onStartupResolved: () -> Unit,
+) {
     val state by model.state.collectAsState()
     val playback by PlaybackService.playback.collectAsState()
     var showPlayer by remember { mutableStateOf(false) }
+
+    LaunchedEffect(state.hasApiKey, state.backendReady, state.error) {
+        if (!state.hasApiKey || state.backendReady || state.error != null) onStartupResolved()
+    }
 
     if (!state.hasApiKey) {
         ApiKeyScreen(model::saveApiKey)
@@ -632,8 +646,12 @@ private fun MiniPlayer(playback: NativePlaybackState, open: () -> Unit) {
                 Text(playback.bookTitle, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
             }
             IconButton(onClick = { PlaybackService.seekRelative(-10_000) }) { Icon(Icons.Rounded.Replay10, "Back 10 seconds") }
-            IconButton(onClick = { PlaybackService.toggle() }) {
-                Icon(if (playback.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (playback.playing) "Pause" else "Play", Modifier.size(34.dp))
+            Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+                if (playback.buffering) {
+                    CircularProgressIndicator(Modifier.size(30.dp), strokeWidth = 3.dp)
+                } else IconButton(onClick = { PlaybackService.toggle() }) {
+                    Icon(if (playback.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (playback.playing) "Pause" else "Play", Modifier.size(34.dp))
+                }
             }
             IconButton(onClick = { PlaybackService.next() }) { Icon(Icons.Rounded.SkipNext, "Next chapter") }
         }
@@ -674,8 +692,12 @@ private fun FullPlayer(playback: NativePlaybackState, close: () -> Unit) {
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     IconButton(onClick = { PlaybackService.seekRelative(-10_000) }) { Icon(Icons.Rounded.Replay10, "Back 10 seconds", Modifier.size(32.dp)) }
-                    IconButton(onClick = PlaybackService::toggle, modifier = Modifier.size(72.dp)) {
-                        Icon(if (playback.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, null, Modifier.size(58.dp))
+                    Box(Modifier.size(72.dp), contentAlignment = Alignment.Center) {
+                        if (playback.buffering) {
+                            CircularProgressIndicator(Modifier.size(52.dp), strokeWidth = 5.dp)
+                        } else IconButton(onClick = PlaybackService::toggle, modifier = Modifier.fillMaxSize()) {
+                            Icon(if (playback.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (playback.playing) "Pause" else "Play", Modifier.size(58.dp))
+                        }
                     }
                     IconButton(onClick = PlaybackService::next) { Icon(Icons.Rounded.SkipNext, "Next chapter", Modifier.size(36.dp)) }
                 }

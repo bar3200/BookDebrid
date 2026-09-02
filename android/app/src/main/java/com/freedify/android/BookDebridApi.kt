@@ -66,28 +66,32 @@ class BookDebridApi {
     }
 
     suspend fun download(book: Audiobook, onProgress: suspend (Float, String) -> Unit): Audiobook {
-        val magnet = book.magnetLink ?: details(book.id).magnetLink
-            ?: throw ApiException("This result did not include a magnet link")
-        val transfer = request(
-            "/api/debrid/alldebrid/transfer",
-            method = "POST",
-            body = JSONObject().put("magnet_link", magnet),
-        )
-        val transferId = transfer.optString("id", transfer.optString("transfer_id"))
-        if (transferId.isBlank()) throw ApiException("AllDebrid did not return a transfer ID")
+        val magnet = book.magnetLink
+        val transferId = book.debridId ?: run {
+            val uploadMagnet = magnet ?: details(book.id).magnetLink
+                ?: throw ApiException("This result did not include a magnet link")
+            val transfer = request(
+                "/api/debrid/alldebrid/transfer",
+                method = "POST",
+                body = JSONObject().put("magnet_link", uploadMagnet),
+            )
+            val uploadedId = transfer.optString("id", transfer.optString("transfer_id"))
+            if (uploadedId.isBlank()) throw ApiException("AllDebrid did not return a transfer ID")
 
-        var ready = transfer.optBoolean("ready")
-        while (!ready) {
-            val status = request("/api/debrid/alldebrid/transfer/${encode(transferId)}")
-                .optJSONObject("transfer")
-                ?: throw ApiException("AllDebrid transfer was not found")
-            if (status.optString("status") == "error") {
-                throw ApiException(status.optString("message", "AllDebrid transfer failed"))
+            var ready = transfer.optBoolean("ready")
+            while (!ready) {
+                val status = request("/api/debrid/alldebrid/transfer/${encode(uploadedId)}")
+                    .optJSONObject("transfer")
+                    ?: throw ApiException("AllDebrid transfer was not found")
+                if (status.optString("status") == "error") {
+                    throw ApiException(status.optString("message", "AllDebrid transfer failed"))
+                }
+                val progress = status.optDouble("progress", 0.0).toFloat().coerceIn(0f, 1f)
+                onProgress(progress, status.optString("message", "Downloading"))
+                ready = status.optString("status") == "finished" || progress >= 1f
+                if (!ready) delay(4_000)
             }
-            val progress = status.optDouble("progress", 0.0).toFloat().coerceIn(0f, 1f)
-            onProgress(progress, status.optString("message", "Downloading"))
-            ready = status.optString("status") == "finished" || progress >= 1f
-            if (!ready) delay(4_000)
+            uploadedId
         }
 
         onProgress(1f, "Reading chapters…")
@@ -105,7 +109,7 @@ class BookDebridApi {
                     val chapter = embedded.optJSONObject(chapterIndex) ?: continue
                     chapters += AudiobookChapter(
                         id = "${book.id}:$fileIndex:$chapterIndex",
-                        title = chapter.optString("title", "Chapter ${chapters.size + 1}"),
+                        title = chapterTitle(chapter, chapters.size + 1),
                         sourceId = sourceIdForAllDebrid(sourceLink),
                         startSeconds = chapter.optDouble("start", 0.0),
                         endSeconds = chapter.opt("end").let(::parseFlexibleDuration),
@@ -124,8 +128,15 @@ class BookDebridApi {
             }
         }
         if (chapters.isEmpty()) throw ApiException("No playable audiobook files were found")
-        return book.copy(magnetLink = magnet, debridId = transferId, chapters = chapters)
+        return book.copy(magnetLink = magnet ?: book.magnetLink, debridId = transferId, chapters = chapters)
     }
+
+    private fun chapterTitle(chapter: JSONObject, number: Int): String =
+        listOf("title", "name", "label")
+            .asSequence()
+            .map { chapter.optString(it).trim() }
+            .firstOrNull(String::isNotBlank)
+            ?: "Chapter $number"
 
     suspend fun delete(book: Audiobook) {
         val id = book.debridId ?: return
