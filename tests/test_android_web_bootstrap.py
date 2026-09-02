@@ -171,6 +171,9 @@ class AndroidWebBootstrapTests(unittest.TestCase):
         self.assertIn("private fun loadHomeRecommendations()", activity)
         self.assertIn('"Books you might like"', activity)
         self.assertIn('"Inspired by ${state.recommendationSeedTitle}"', activity)
+        recommendation_section = activity[activity.index('"Books you might like"'):activity.index("@OptIn(ExperimentalLayoutApi::class)")]
+        self.assertNotIn("Card(", recommendation_section)
+        self.assertIn("LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp))", recommendation_section)
         self.assertIn('book.id.startsWith("/works/")', activity)
         self.assertIn('api.search("${book.title} ${book.author}")', activity)
 
@@ -200,6 +203,8 @@ class AndroidWebBootstrapTests(unittest.TestCase):
         self.assertIn("preserveDescriptiveChapterTitles", activity)
         self.assertIn("chapter.copy(title = prior.title)", activity)
         self.assertIn('return "Chapter $number of ${book.chapters.size}"', playback)
+        self.assertIn("if (state.selectedBook != null) {\n                TopAppBar(", activity)
+        self.assertNotIn('state.selectedBook?.title ?: "BookDebrid"', activity)
 
     def test_full_player_uses_large_filled_controls(self):
         activity = (ROOT / "android/app/src/main/java/com/freedify/android/NativeMainActivity.kt").read_text(encoding="utf-8")

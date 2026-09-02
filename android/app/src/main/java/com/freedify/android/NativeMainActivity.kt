@@ -435,15 +435,17 @@ private fun BookDebridApp(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(if (state.selectedBook != null) "Book details" else "BookDebrid", maxLines = 1) },
-                navigationIcon = {
-                    if (state.selectedBook != null) IconButton(onClick = model::closeBook) {
+            if (state.selectedBook != null) {
+                TopAppBar(
+                    title = { Text("Book details", maxLines = 1) },
+                    navigationIcon = {
+                        IconButton(onClick = model::closeBook) {
                         Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
-            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
+                )
+            }
         },
         bottomBar = {
             Column(Modifier.navigationBarsPadding()) {
@@ -547,29 +549,20 @@ private fun HomeScreen(state: NativeUiState, model: BookDebridViewModel) {
             }
             if (state.homeRecommendations.isNotEmpty()) {
                 item {
-                    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp)) {
-                        Column(Modifier.padding(vertical = 18.dp)) {
-                            Text(
-                                "Books you might like",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.padding(horizontal = 18.dp),
-                            )
-                            Text(
-                                "Inspired by ${state.recommendationSeedTitle}",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.padding(horizontal = 18.dp, vertical = 4.dp),
-                            )
-                            LazyRow(
-                                contentPadding = PaddingValues(horizontal = 18.dp, vertical = 10.dp),
-                                horizontalArrangement = Arrangement.spacedBy(14.dp),
-                            ) {
-                                items(state.homeRecommendations, key = { it.id }) { recommendation ->
-                                    BookCover(recommendation) { model.openBook(recommendation) }
-                                }
-                            }
+                    Column {
+                        Text("Books you might like", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "Inspired by ${state.recommendationSeedTitle}",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+                item {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        items(state.homeRecommendations, key = { it.id }) { recommendation ->
+                            BookCover(recommendation) { model.openBook(recommendation) }
                         }
                     }
                 }
@@ -655,7 +648,10 @@ private fun LibraryScreen(books: List<Audiobook>, model: BookDebridViewModel) {
     } else LazyColumn(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) { items(books, key = { it.id }) { BookRow(it) { model.openBook(it) } } }
+    ) {
+        item { Text("My Books", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold) }
+        items(books, key = { it.id }) { BookRow(it) { model.openBook(it) } }
+    }
 }
 
 @Composable
