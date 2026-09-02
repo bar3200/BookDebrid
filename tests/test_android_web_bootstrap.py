@@ -153,6 +153,17 @@ class AndroidWebBootstrapTests(unittest.TestCase):
         self.assertIn('.putString("book_chapter:$bookId", chapterId)', store)
         self.assertIn("primary = Color(0xFF8AB4FF)", activity)
 
+    def test_native_search_has_field_specific_modes(self):
+        activity = (ROOT / "android/app/src/main/java/com/freedify/android/NativeMainActivity.kt").read_text(encoding="utf-8")
+
+        self.assertIn("enum class AudiobookSearchMode", activity)
+        for mode in ('TITLE("Title"', 'AUTHOR("Author"', 'GENRE("Genre"', 'URL("URL"'):
+            self.assertIn(mode, activity)
+        self.assertIn('Text("Search by"', activity)
+        self.assertIn("FilterChip(", activity)
+        self.assertIn("rankSearchResults(results, query, mode)", activity)
+        self.assertIn("Paste a complete AudiobookBay book URL", activity)
+
     def test_android_uses_full_size_adaptive_bookdebrid_icon(self):
         manifest = (
             ROOT / "android/app/src/main/AndroidManifest.xml"

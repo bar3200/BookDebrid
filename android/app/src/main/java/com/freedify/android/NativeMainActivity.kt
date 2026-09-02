@@ -51,6 +51,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -131,6 +132,13 @@ class NativeMainActivity : ComponentActivity() {
 
 enum class AppDestination { HOME, SEARCH, LIBRARY, SETTINGS }
 
+enum class AudiobookSearchMode(val label: String, val fieldLabel: String) {
+    TITLE("Title", "Book title"),
+    AUTHOR("Author", "Author name"),
+    GENRE("Genre", "Genre, e.g. psychological thriller"),
+    URL("URL", "AudiobookBay book URL"),
+}
+
 data class NativeUiState(
     val hasApiKey: Boolean = false,
     val backendReady: Boolean = false,
@@ -138,6 +146,7 @@ data class NativeUiState(
     val destination: AppDestination = AppDestination.HOME,
     val books: List<Audiobook> = emptyList(),
     val searchQuery: String = "",
+    val searchMode: AudiobookSearchMode = AudiobookSearchMode.TITLE,
     val searchResults: List<Audiobook> = emptyList(),
     val searching: Boolean = false,
     val selectedBook: Audiobook? = null,
@@ -180,18 +189,28 @@ class BookDebridViewModel(application: android.app.Application) : AndroidViewMod
 
     fun setSearchQuery(value: String) { _state.value = _state.value.copy(searchQuery = value) }
 
+    fun setSearchMode(mode: AudiobookSearchMode) {
+        _state.value = _state.value.copy(searchMode = mode, searchQuery = "", searchResults = emptyList(), error = null)
+    }
+
     fun search() {
         val query = _state.value.searchQuery.trim()
         if (query.isBlank() || !_state.value.backendReady) return
+        val mode = _state.value.searchMode
+        if (mode == AudiobookSearchMode.URL && !query.matches(Regex("https?://(www\\.)?audiobookbay\\.[^/]+/.+", RegexOption.IGNORE_CASE))) {
+            _state.value = _state.value.copy(error = "Paste a complete AudiobookBay book URL")
+            return
+        }
         viewModelScope.launch {
             _state.value = _state.value.copy(searching = true, error = null)
             runCatching {
-                try {
+                val results = try {
                     api.search(query)
                 } catch (error: ApiException) {
                     if (error.statusCode != 502) throw error
                     NativeAudiobookSearch.search(query)
                 }
+                rankSearchResults(results, query, mode)
             }
                 .onSuccess { _state.value = _state.value.copy(searching = false, searchResults = it) }
                 .onFailure { _state.value = _state.value.copy(searching = false, error = it.userMessage()) }
@@ -286,6 +305,34 @@ class BookDebridViewModel(application: android.app.Application) : AndroidViewMod
 
 private fun Throwable.userMessage(): String = message?.removePrefix("AllDebrid Error: ")
     ?: "Something went wrong. Please try again."
+
+private fun rankSearchResults(
+    books: List<Audiobook>,
+    query: String,
+    mode: AudiobookSearchMode,
+): List<Audiobook> {
+    if (mode == AudiobookSearchMode.URL) return books
+    val terms = query.lowercase().split(Regex("\\s+")).filter(String::isNotBlank)
+    fun score(book: Audiobook): Int {
+        val field = when (mode) {
+            AudiobookSearchMode.TITLE -> book.title
+            AudiobookSearchMode.AUTHOR -> book.author
+            AudiobookSearchMode.GENRE -> book.genres.joinToString(" ")
+            AudiobookSearchMode.URL -> ""
+        }.lowercase()
+        return terms.fold(0) { total, term -> total +
+            when {
+                field == query.lowercase() -> 12
+                field.startsWith(query.lowercase()) -> 8
+                field.contains(term) -> 3
+                else -> 0
+            }
+        }
+    }
+    return books.withIndex().sortedWith(
+        compareByDescending<IndexedValue<Audiobook>> { score(it.value) }.thenBy { it.index },
+    ).map { it.value }
+}
 
 @Composable
 private fun BookDebridTheme(content: @Composable () -> Unit) {
@@ -455,10 +502,23 @@ private fun HomeScreen(state: NativeUiState, model: BookDebridViewModel) {
 @Composable
 private fun SearchScreen(state: NativeUiState, model: BookDebridViewModel) {
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
+        Text("Search by", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+        ) {
+            items(AudiobookSearchMode.entries) { mode ->
+                FilterChip(
+                    selected = state.searchMode == mode,
+                    onClick = { model.setSearchMode(mode) },
+                    label = { Text(mode.label) },
+                )
+            }
+        }
         OutlinedTextField(
             value = state.searchQuery,
             onValueChange = model::setSearchQuery,
-            label = { Text("Title, author, or AudiobookBay URL") },
+            label = { Text(state.searchMode.fieldLabel) },
             leadingIcon = { Icon(Icons.Rounded.Search, null) },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
@@ -467,7 +527,13 @@ private fun SearchScreen(state: NativeUiState, model: BookDebridViewModel) {
             onClick = model::search,
             enabled = state.searchQuery.isNotBlank() && !state.searching,
             modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
-        ) { Text(if (state.searching) "Searching…" else "Search audiobooks") }
+        ) {
+            Text(
+                if (state.searching) "Searching…"
+                else if (state.searchMode == AudiobookSearchMode.URL) "Open audiobook"
+                else "Search by ${state.searchMode.label.lowercase()}",
+            )
+        }
         if (state.searching) LinearProgressIndicator(Modifier.fillMaxWidth())
         LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(vertical = 8.dp)) {
             items(state.searchResults, key = { it.id }) { BookRow(it) { model.openBook(it) } }
