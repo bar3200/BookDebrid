@@ -164,6 +164,25 @@ class AndroidWebBootstrapTests(unittest.TestCase):
         self.assertIn("rankSearchResults(results, query, mode)", activity)
         self.assertIn("Paste a complete AudiobookBay book URL", activity)
 
+    def test_native_home_has_personalized_recommendations(self):
+        activity = (ROOT / "android/app/src/main/java/com/freedify/android/NativeMainActivity.kt").read_text(encoding="utf-8")
+
+        self.assertIn("homeRecommendations: List<Audiobook>", activity)
+        self.assertIn("private fun loadHomeRecommendations()", activity)
+        self.assertIn('"Books you might like"', activity)
+        self.assertIn('"Inspired by ${state.recommendationSeedTitle}"', activity)
+        self.assertIn('book.id.startsWith("/works/")', activity)
+        self.assertIn('api.search("${book.title} ${book.author}")', activity)
+
+    def test_native_genre_search_has_live_autocomplete(self):
+        activity = (ROOT / "android/app/src/main/java/com/freedify/android/NativeMainActivity.kt").read_text(encoding="utf-8")
+
+        self.assertIn("private val AUDIOBOOK_GENRES", activity)
+        self.assertIn('"Science Fiction"', activity)
+        self.assertIn('"Genre suggestions"', activity)
+        self.assertIn("it.contains(typedGenre, ignoreCase = true)", activity)
+        self.assertIn("model.setSearchQuery(genre)", activity)
+
     def test_android_uses_full_size_adaptive_bookdebrid_icon(self):
         manifest = (
             ROOT / "android/app/src/main/AndroidManifest.xml"

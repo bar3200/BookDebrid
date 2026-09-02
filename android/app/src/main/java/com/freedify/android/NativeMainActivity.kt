@@ -139,6 +139,28 @@ enum class AudiobookSearchMode(val label: String, val fieldLabel: String) {
     URL("URL", "AudiobookBay book URL"),
 }
 
+private val AUDIOBOOK_GENRES = listOf(
+    "Biography & Memoir",
+    "Business",
+    "Classics",
+    "Crime",
+    "Fantasy",
+    "Historical Fiction",
+    "History",
+    "Horror",
+    "Humor",
+    "Mystery",
+    "Nonfiction",
+    "Personal Development",
+    "Philosophy",
+    "Romance",
+    "Science",
+    "Science Fiction",
+    "Thriller",
+    "True Crime",
+    "Young Adult",
+)
+
 data class NativeUiState(
     val hasApiKey: Boolean = false,
     val backendReady: Boolean = false,
@@ -149,6 +171,8 @@ data class NativeUiState(
     val searchMode: AudiobookSearchMode = AudiobookSearchMode.TITLE,
     val searchResults: List<Audiobook> = emptyList(),
     val searching: Boolean = false,
+    val homeRecommendations: List<Audiobook> = emptyList(),
+    val recommendationSeedTitle: String = "",
     val selectedBook: Audiobook? = null,
     val related: List<Audiobook> = emptyList(),
     val transferProgress: Float? = null,
@@ -164,7 +188,10 @@ class BookDebridViewModel(application: android.app.Application) : AndroidViewMod
         NativeUiState(hasApiKey = !secureSettings.getApiKey().isNullOrBlank(), books = store.books()),
     )
     val state: StateFlow<NativeUiState> = _state.asStateFlow()
-    private val storeListener = { _state.value = _state.value.copy(books = store.books()) }
+    private val storeListener = {
+        _state.value = _state.value.copy(books = store.books())
+        loadHomeRecommendations()
+    }
 
     init {
         store.addListener(storeListener)
@@ -221,7 +248,13 @@ class BookDebridViewModel(application: android.app.Application) : AndroidViewMod
         _state.value = _state.value.copy(selectedBook = book, related = emptyList(), error = null)
         viewModelScope.launch {
             val detailed = runCatching {
-                val base = if (book.magnetLink == null && book.chapters.isEmpty()) api.details(book.id) else book
+                val catalogBook = if (book.id.startsWith("/works/") || book.id.startsWith("openlibrary:")) {
+                    api.search("${book.title} ${book.author}")
+                        .let { rankSearchResults(it, book.title, AudiobookSearchMode.TITLE) }
+                        .firstOrNull()
+                        ?: book
+                } else book
+                val base = if (catalogBook.magnetLink == null && catalogBook.chapters.isEmpty()) api.details(catalogBook.id) else catalogBook
                 api.enrich(base)
             }.getOrElse { book }
             _state.value = _state.value.copy(selectedBook = detailed)
@@ -297,9 +330,30 @@ class BookDebridViewModel(application: android.app.Application) : AndroidViewMod
             onReady = {
                 _state.value = _state.value.copy(backendReady = true, loadingMessage = "", error = null)
                 PlaybackService.ensureStarted(getApplication<android.app.Application>())
+                loadHomeRecommendations()
             },
             onError = { message -> _state.value = _state.value.copy(error = message, loadingMessage = "") },
         )
+    }
+
+    private fun loadHomeRecommendations() {
+        if (!_state.value.backendReady) return
+        val seed = store.books().firstOrNull { it.genres.isNotEmpty() } ?: store.books().firstOrNull()
+        if (seed == null) {
+            _state.value = _state.value.copy(homeRecommendations = emptyList(), recommendationSeedTitle = "")
+            return
+        }
+        viewModelScope.launch {
+            val libraryIds = store.books().mapTo(mutableSetOf()) { it.id }
+            val recommendations = runCatching { api.related(seed) }.getOrDefault(emptyList())
+                .filterNot { it.id in libraryIds }
+                .distinctBy { it.title.lowercase() }
+                .take(10)
+            _state.value = _state.value.copy(
+                homeRecommendations = recommendations,
+                recommendationSeedTitle = seed.title,
+            )
+        }
     }
 }
 
@@ -495,6 +549,35 @@ private fun HomeScreen(state: NativeUiState, model: BookDebridViewModel) {
                     items(state.books.take(10), key = { it.id }) { BookCover(it) { model.openBook(it) } }
                 }
             }
+            if (state.homeRecommendations.isNotEmpty()) {
+                item {
+                    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp)) {
+                        Column(Modifier.padding(vertical = 18.dp)) {
+                            Text(
+                                "Books you might like",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.padding(horizontal = 18.dp),
+                            )
+                            Text(
+                                "Inspired by ${state.recommendationSeedTitle}",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(horizontal = 18.dp, vertical = 4.dp),
+                            )
+                            LazyRow(
+                                contentPadding = PaddingValues(horizontal = 18.dp, vertical = 10.dp),
+                                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                            ) {
+                                items(state.homeRecommendations, key = { it.id }) { recommendation ->
+                                    BookCover(recommendation) { model.openBook(recommendation) }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -523,6 +606,30 @@ private fun SearchScreen(state: NativeUiState, model: BookDebridViewModel) {
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
+        if (state.searchMode == AudiobookSearchMode.GENRE) {
+            val typedGenre = state.searchQuery.trim()
+            val suggestions = AUDIOBOOK_GENRES
+                .filter { typedGenre.isBlank() || it.contains(typedGenre, ignoreCase = true) }
+                .sortedBy { !it.startsWith(typedGenre, ignoreCase = true) }
+                .take(8)
+            if (suggestions.isNotEmpty()) {
+                Text(
+                    "Genre suggestions",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 10.dp),
+                )
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(suggestions) { genre ->
+                        FilterChip(
+                            selected = genre.equals(state.searchQuery, ignoreCase = true),
+                            onClick = { model.setSearchQuery(genre) },
+                            label = { Text(genre) },
+                        )
+                    }
+                }
+            }
+        }
         Button(
             onClick = model::search,
             enabled = state.searchQuery.isNotBlank() && !state.searching,
