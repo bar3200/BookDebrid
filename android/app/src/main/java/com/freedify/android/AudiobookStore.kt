@@ -39,6 +39,21 @@ class AudiobookStore private constructor(context: Context) {
         speed = preferences.getFloat(KEY_SPEED, 1f),
     )
 
+    fun snapshotForBook(bookId: String): PlaybackSnapshot {
+        val current = snapshot()
+        val chapterId = preferences.getString("book_chapter:$bookId", null)
+            ?: current.chapterId.takeIf { current.bookId == bookId }
+            ?: ""
+        return current.copy(
+            bookId = bookId,
+            chapterId = chapterId,
+            positionMs = preferences.getLong(
+                "book_position:$bookId",
+                if (current.bookId == bookId) current.positionMs else 0L,
+            ),
+        )
+    }
+
     fun updateSnapshot(bookId: String, chapterId: String, positionMs: Long, speed: Float) {
         preferences.edit()
             .putString(KEY_CURRENT_BOOK, bookId)
@@ -46,6 +61,8 @@ class AudiobookStore private constructor(context: Context) {
             .putLong(KEY_CURRENT_POSITION, positionMs.coerceAtLeast(0))
             .putFloat(KEY_SPEED, speed.coerceIn(0.5f, 3f))
             .putLong("progress:$chapterId", positionMs.coerceAtLeast(0))
+            .putString("book_chapter:$bookId", chapterId)
+            .putLong("book_position:$bookId", positionMs.coerceAtLeast(0))
             .apply()
     }
 

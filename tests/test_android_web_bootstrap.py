@@ -139,6 +139,20 @@ class AndroidWebBootstrapTests(unittest.TestCase):
         self.assertIn("chapterTitleScore(candidate.chapters) > chapterTitleScore(saved.chapters)", store)
         self.assertIn("chapters = candidate.chapters", store)
 
+    def test_native_book_details_prioritize_resume_and_discovery(self):
+        activity = (ROOT / "android/app/src/main/java/com/freedify/android/NativeMainActivity.kt").read_text(encoding="utf-8")
+        store = (ROOT / "android/app/src/main/java/com/freedify/android/AudiobookStore.kt").read_text(encoding="utf-8")
+
+        self.assertIn('"Resume listening"', activity)
+        self.assertIn('Text("Start from the beginning")', activity)
+        self.assertIn('var chaptersExpanded by remember(book.id)', activity)
+        self.assertIn('Text("Books like this"', activity)
+        self.assertLess(activity.index('Text("Books like this"'), activity.index('Text("Chapters"'))
+        self.assertIn('Text("Book options"', activity)
+        self.assertIn("fun snapshotForBook(bookId: String)", store)
+        self.assertIn('.putString("book_chapter:$bookId", chapterId)', store)
+        self.assertIn("primary = Color(0xFF8AB4FF)", activity)
+
     def test_android_uses_full_size_adaptive_bookdebrid_icon(self):
         manifest = (
             ROOT / "android/app/src/main/AndroidManifest.xml"
