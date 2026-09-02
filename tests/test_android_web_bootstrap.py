@@ -195,6 +195,15 @@ class AndroidWebBootstrapTests(unittest.TestCase):
         self.assertIn("chapter.copy(title = prior.title)", activity)
         self.assertIn('return "Chapter $number of ${book.chapters.size}"', playback)
 
+    def test_full_player_uses_large_filled_controls(self):
+        activity = (ROOT / "android/app/src/main/java/com/freedify/android/NativeMainActivity.kt").read_text(encoding="utf-8")
+
+        self.assertIn("FilledTonalIconButton(", activity)
+        self.assertIn("FilledIconButton(onClick = PlaybackService::toggle", activity)
+        self.assertIn("Modifier.size(82.dp)", activity)
+        self.assertIn("Modifier.size(60.dp)", activity)
+        self.assertIn("fillMaxWidth(0.60f).aspectRatio(2f / 3f)", activity)
+
     def test_android_uses_full_size_adaptive_bookdebrid_icon(self):
         manifest = (
             ROOT / "android/app/src/main/AndroidManifest.xml"

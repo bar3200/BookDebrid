@@ -30,6 +30,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.LibraryBooks
@@ -52,6 +53,8 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -1070,9 +1073,9 @@ private fun FullPlayer(playback: NativePlaybackState, close: () -> Unit) {
                     IconButton(onClick = close) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Close player") }
                     Text("Now playing", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                 }
-                Spacer(Modifier.height(22.dp))
-                Cover(playback.coverUrl, Modifier.fillMaxWidth(0.78f).aspectRatio(2f / 3f))
-                Spacer(Modifier.height(24.dp))
+                Spacer(Modifier.height(10.dp))
+                Cover(playback.coverUrl, Modifier.fillMaxWidth(0.60f).aspectRatio(2f / 3f))
+                Spacer(Modifier.height(16.dp))
                 Text(playback.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Text(playback.bookTitle, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                 val duration = playback.durationMs.coerceAtLeast(1L)
@@ -1087,19 +1090,36 @@ private fun FullPlayer(playback: NativePlaybackState, close: () -> Unit) {
                     Text("−${formatDuration((duration - playback.positionMs).coerceAtLeast(0) / 1000.0)}")
                 }
                 Row(
-                    Modifier.fillMaxWidth().padding(vertical = 10.dp),
+                    Modifier.fillMaxWidth().padding(vertical = 14.dp),
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    IconButton(onClick = { PlaybackService.seekRelative(-10_000) }) { Icon(Icons.Rounded.Replay10, "Back 10 seconds", Modifier.size(32.dp)) }
-                    Box(Modifier.size(72.dp), contentAlignment = Alignment.Center) {
+                    FilledTonalIconButton(
+                        onClick = { PlaybackService.seekRelative(-10_000) },
+                        modifier = Modifier.size(60.dp),
+                    ) { Icon(Icons.Rounded.Replay10, "Back 10 seconds", Modifier.size(32.dp)) }
+                    Box(Modifier.size(82.dp), contentAlignment = Alignment.Center) {
                         if (playback.buffering) {
-                            CircularProgressIndicator(Modifier.size(52.dp), strokeWidth = 5.dp)
-                        } else IconButton(onClick = PlaybackService::toggle, modifier = Modifier.fillMaxSize()) {
-                            Icon(if (playback.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (playback.playing) "Pause" else "Play", Modifier.size(58.dp))
+                            Surface(
+                                modifier = Modifier.fillMaxSize(),
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                                shape = CircleShape,
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    CircularProgressIndicator(Modifier.size(50.dp), strokeWidth = 5.dp)
+                                }
+                            }
+                        } else FilledIconButton(onClick = PlaybackService::toggle, modifier = Modifier.fillMaxSize()) {
+                            Icon(
+                                if (playback.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                                if (playback.playing) "Pause" else "Play",
+                                Modifier.size(48.dp),
+                            )
                         }
                     }
-                    IconButton(onClick = PlaybackService::next) { Icon(Icons.Rounded.SkipNext, "Next chapter", Modifier.size(36.dp)) }
+                    FilledTonalIconButton(onClick = PlaybackService::next, modifier = Modifier.size(60.dp)) {
+                        Icon(Icons.Rounded.SkipNext, "Next chapter", Modifier.size(34.dp))
+                    }
                 }
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(listOf(0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)) { speed ->
