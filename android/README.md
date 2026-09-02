@@ -9,8 +9,9 @@ music, podcasts, backups, and migration during the transition.
 
 ## Install and use
 
-1. Download `freedify-signed-apk` from a successful **Build Signed Android APK**
-   GitHub Actions run, unzip the artifact, and install `app-release.apk`. Android
+1. Download the versioned `BookDebrid-…-signed-apk` artifact from a successful
+   **Build Signed Android APK** GitHub Actions run, unzip it, and install the
+   enclosed versioned `BookDebrid` APK. Android
    may ask you to allow installs from the browser or file manager used.
 2. On first run, enter an AllDebrid API key. Create or revoke keys in your
    AllDebrid account; no key is included in the repository or APK.
@@ -61,8 +62,8 @@ the first secret. Never commit the keystore or any password. Keep an encrypted,
 tested backup of the keystore and credentials: losing this signing identity
 means future APKs cannot update existing installations.
 
-Version `1.5.3` uses `versionCode` 21 and can update the persistently signed
-`1.3.7` and `1.4.0` builds in place. Installations made from older ephemeral debug artifacts
+Version `1.6.7` uses `versionCode` 35 and can update earlier persistently signed
+builds in place. Installations made from older ephemeral debug artifacts
 have a different signature and therefore require a one-time uninstall. That
 uninstall removes the app's stored settings, including the encrypted AllDebrid
 key. Builds signed by the same persistent key can update in place as long as
