@@ -18,6 +18,19 @@ class BookDebridApi {
         return (0 until results.length()).mapNotNull { results.optJSONObject(it)?.let(Audiobook::fromSearch) }
     }
 
+    suspend fun catalogSearch(query: String, mode: AudiobookSearchMode): List<Audiobook> {
+        val catalogMode = when (mode) {
+            AudiobookSearchMode.AUTHOR -> "author"
+            AudiobookSearchMode.GENRE -> "genre"
+            else -> "title"
+        }
+        val payload = request(
+            "/api/audiobooks/catalog/search?q=${encode(query)}&mode=$catalogMode&limit=20",
+        )
+        val results = payload.optJSONArray("results") ?: return emptyList()
+        return (0 until results.length()).mapNotNull { results.optJSONObject(it)?.let(Audiobook::fromSearch) }
+    }
+
     suspend fun details(id: String): Audiobook {
         val payload = request("/api/audiobooks/details?id=${encode(id)}")
         return Audiobook.fromSearch(payload).copy(

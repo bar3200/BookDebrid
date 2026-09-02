@@ -155,6 +155,7 @@ class AndroidWebBootstrapTests(unittest.TestCase):
 
     def test_native_search_has_field_specific_modes(self):
         activity = (ROOT / "android/app/src/main/java/com/freedify/android/NativeMainActivity.kt").read_text(encoding="utf-8")
+        api = (ROOT / "android/app/src/main/java/com/freedify/android/BookDebridApi.kt").read_text(encoding="utf-8")
 
         self.assertIn("enum class AudiobookSearchMode", activity)
         for mode in ('TITLE("Title"', 'AUTHOR("Author"', 'GENRE("Genre"', 'URL("URL"'):
@@ -163,6 +164,12 @@ class AndroidWebBootstrapTests(unittest.TestCase):
         self.assertIn("FilterChip(", activity)
         self.assertIn("rankSearchResults(results, query, mode)", activity)
         self.assertIn("Paste a complete AudiobookBay book URL", activity)
+        self.assertIn("searchWithFallbacks(query, mode)", activity)
+        self.assertIn("searchAudiobookBay(query)", activity)
+        self.assertIn("serverResults.isNotEmpty()", activity)
+        self.assertIn("NativeAudiobookSearch.search(query)", activity)
+        self.assertIn("suspend fun catalogSearch", api)
+        self.assertIn('AudiobookSearchMode.GENRE -> "genre"', api)
 
     def test_native_home_has_personalized_recommendations(self):
         activity = (ROOT / "android/app/src/main/java/com/freedify/android/NativeMainActivity.kt").read_text(encoding="utf-8")
@@ -175,7 +182,7 @@ class AndroidWebBootstrapTests(unittest.TestCase):
         self.assertNotIn("Card(", recommendation_section)
         self.assertIn("LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp))", recommendation_section)
         self.assertIn('book.id.startsWith("/works/")', activity)
-        self.assertIn('api.search("${book.title} ${book.author}")', activity)
+        self.assertIn('searchAudiobookBay("${book.title} ${book.author}")', activity)
 
     def test_native_genre_search_has_live_autocomplete(self):
         activity = (ROOT / "android/app/src/main/java/com/freedify/android/NativeMainActivity.kt").read_text(encoding="utf-8")

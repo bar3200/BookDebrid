@@ -4,7 +4,7 @@ from unittest.mock import patch
 import httpx
 
 from app import book_discovery_service
-from app.book_discovery_service import discover_similar_books, select_discovery_genres
+from app.book_discovery_service import discover_similar_books, search_catalog_books, select_discovery_genres
 
 
 class FakeResponse:
@@ -98,6 +98,13 @@ class BookDiscoveryTests(unittest.IsolatedAsyncioTestCase):
             result["recommendations"][0]["availability_query"],
             "Foundation Isaac Asimov",
         )
+
+    async def test_catalog_genre_search_does_not_depend_on_audiobookbay(self):
+        with patch("app.book_discovery_service.httpx.AsyncClient", FakeClient, create=True):
+            results = await search_catalog_books("science fiction", "genre")
+
+        self.assertEqual(FakeClient.calls[0]["q"], 'subject_key:"science_fiction"')
+        self.assertEqual([book["title"] for book in results], ["Dune", "Foundation", "Treasure Island"])
 
     async def test_supplied_genres_are_enriched_by_title_metadata(self):
         with patch("app.book_discovery_service.httpx.AsyncClient", FakeClient, create=True), \

@@ -159,6 +159,61 @@ def _unavailable_result(title: str, author: str, genres: list[str]) -> dict[str,
     }
 
 
+async def search_catalog_books(
+    query: str,
+    mode: str = "title",
+    limit: int = 20,
+) -> list[dict[str, Any]]:
+    """Search Open Library independently of torrent availability.
+
+    This keeps title/author/genre discovery usable when AudiobookBay returns a
+    block page or its homepage. Selecting a result still resolves availability
+    through AudiobookBay before download.
+    """
+    normalized_mode = mode.strip().lower()
+    params: dict[str, Any] = {
+        "fields": "key,title,author_name,subject,cover_i,first_publish_year",
+        "limit": max(1, min(limit, 40)),
+    }
+    canonical_genre: list[str] = []
+    if normalized_mode == "author":
+        params["author"] = query
+    elif normalized_mode == "genre":
+        canonical_genre = select_discovery_genres([query], limit=1)
+        subject = canonical_genre[0] if canonical_genre else query
+        params["q"] = f'subject_key:"{re.sub(r"[^a-z0-9]+", "_", subject.lower()).strip("_")}"'
+    else:
+        params["title"] = query
+
+    async with httpx.AsyncClient(follow_redirects=True, timeout=15.0) as client:
+        payload = await _get_json(client, f"{OPEN_LIBRARY_BASE}/search.json", **params)
+
+    results: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for work in payload.get("docs") or []:
+        genres = select_discovery_genres(
+            canonical_genre + list(work.get("subject") or []),
+            limit=4,
+        )
+        candidate = _recommendation_from_work(work, genres)
+        if not candidate or candidate["id"] in seen:
+            continue
+        seen.add(candidate["id"])
+        results.append(candidate)
+    if normalized_mode in {"title", "author"}:
+        results.sort(
+            key=lambda candidate: -_book_score(
+                {
+                    "title": candidate["title"],
+                    "author_name": [candidate.get("author", "")],
+                },
+                query if normalized_mode == "title" else "",
+                query if normalized_mode == "author" else "",
+            ),
+        )
+    return results[:limit]
+
+
 async def discover_similar_books(
     title: str,
     author: str = "",

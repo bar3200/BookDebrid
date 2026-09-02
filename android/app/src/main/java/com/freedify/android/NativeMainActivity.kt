@@ -214,12 +214,7 @@ class BookDebridViewModel(application: android.app.Application) : AndroidViewMod
         viewModelScope.launch {
             _state.value = _state.value.copy(searching = true, error = null)
             runCatching {
-                val results = try {
-                    api.search(query)
-                } catch (error: ApiException) {
-                    if (error.statusCode != 502) throw error
-                    NativeAudiobookSearch.search(query)
-                }
+                val results = searchWithFallbacks(query, mode)
                 rankSearchResults(results, query, mode)
             }
                 .onSuccess { _state.value = _state.value.copy(searching = false, searchResults = it) }
@@ -232,7 +227,7 @@ class BookDebridViewModel(application: android.app.Application) : AndroidViewMod
         viewModelScope.launch {
             val detailed = runCatching {
                 val catalogBook = if (book.id.startsWith("/works/") || book.id.startsWith("openlibrary:")) {
-                    api.search("${book.title} ${book.author}")
+                    searchAudiobookBay("${book.title} ${book.author}")
                         .let { rankSearchResults(it, book.title, AudiobookSearchMode.TITLE) }
                         .firstOrNull()
                         ?: book
@@ -328,6 +323,27 @@ class BookDebridViewModel(application: android.app.Application) : AndroidViewMod
     }
 
     fun resumePosition(book: Audiobook): Long = store.snapshotForBook(book.id).positionMs
+
+    private suspend fun searchWithFallbacks(query: String, mode: AudiobookSearchMode): List<Audiobook> {
+        if (mode == AudiobookSearchMode.URL) return api.search(query)
+
+        // Genre is a catalog concept, not an AudiobookBay free-text result
+        // type. Prefer Open Library for it, then use ABB only as a fallback.
+        if (mode == AudiobookSearchMode.GENRE) {
+            val catalog = runCatching { api.catalogSearch(query, mode) }.getOrDefault(emptyList())
+            if (catalog.isNotEmpty()) return catalog
+        }
+
+        val available = searchAudiobookBay(query)
+        if (available.isNotEmpty()) return available
+        return runCatching { api.catalogSearch(query, mode) }.getOrDefault(emptyList())
+    }
+
+    private suspend fun searchAudiobookBay(query: String): List<Audiobook> {
+        val serverResults = runCatching { api.search(query) }.getOrDefault(emptyList())
+        if (serverResults.isNotEmpty()) return serverResults
+        return runCatching { NativeAudiobookSearch.search(query) }.getOrDefault(emptyList())
+    }
 
     private fun startBackend(key: String) {
         _state.value = _state.value.copy(backendReady = false, loadingMessage = "Starting private audiobook service…")

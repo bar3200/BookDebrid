@@ -1919,6 +1919,22 @@ async def discover_audiobooks(
         logger.error("Book discovery error: %s", error)
         raise HTTPException(status_code=500, detail=str(error))
 
+
+@app.get("/api/audiobooks/catalog/search")
+async def search_audiobook_catalog(
+    q: str = Query(..., min_length=1, description="Catalog search query"),
+    mode: str = Query("title", pattern="^(title|author|genre)$"),
+    limit: int = Query(20, ge=1, le=40),
+):
+    """Search book metadata without depending on AudiobookBay availability."""
+    try:
+        from app.book_discovery_service import search_catalog_books
+
+        return {"results": await search_catalog_books(q, mode, limit)}
+    except httpx.HTTPError as error:
+        logger.error("Book catalog search error: %s", error)
+        raise HTTPException(status_code=502, detail="Book catalog search is temporarily unavailable")
+
 # ========== AUDIOBOOKS & DEBRID ENDPOINTS ==========
 
 DEBRID_SERVICES = {
