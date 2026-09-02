@@ -75,7 +75,7 @@ data class Audiobook(
                 author = json.optString("author", json.optString("artist", "Unknown author")),
                 coverUrl = json.optString("cover_url", json.optString("artwork")),
                 description = json.optString("description"),
-                genres = json.optJSONArray("genres").toStringList(),
+                genres = normalizeAudiobookGenres(json.optJSONArray("genres").toStringList()),
                 magnetLink = json.optNullableString("magnet_link"),
                 debridId = json.optNullableString("debrid_id"),
                 rating = json.optNullableDouble("rating"),
@@ -93,10 +93,75 @@ data class Audiobook(
             author = json.optString("author", json.optString("artist", "Unknown author")),
             coverUrl = json.optString("cover_image", json.optString("cover_url")),
             description = json.optString("description"),
-            genres = json.optJSONArray("genres").toStringList(),
+            genres = normalizeAudiobookGenres(json.optJSONArray("genres").toStringList()),
         )
     }
 }
+
+internal val CANONICAL_AUDIOBOOK_GENRES = listOf(
+    "Full Cast",
+    "Fantasy",
+    "Science Fiction",
+    "Mystery",
+    "Thriller",
+    "Romance",
+    "Horror",
+    "Historical Fiction",
+    "Literary Fiction",
+    "Contemporary Fiction",
+    "Crime",
+    "True Crime",
+    "Biography",
+    "Memoir",
+    "History",
+    "Business",
+    "Self-Help",
+    "Science",
+    "Philosophy",
+    "Humor",
+    "Classics",
+    "Adventure",
+    "Young Adult",
+    "Politics",
+    "Religion & Spirituality",
+    "Nonfiction",
+)
+
+private val GENRE_ALIASES = listOf(
+    "Full Cast" to listOf("full cast"),
+    "Historical Fiction" to listOf("historical fiction", "historical novel"),
+    "Science Fiction" to listOf("science fiction", "sci fi", "space opera"),
+    "Literary Fiction" to listOf("literary fiction"),
+    "Contemporary Fiction" to listOf("contemporary fiction"),
+    "Young Adult" to listOf("young adult", "ya fiction"),
+    "True Crime" to listOf("true crime"),
+    "Self-Help" to listOf("self help", "personal development"),
+    "Fantasy" to listOf("fantasy"),
+    "Mystery" to listOf("mystery", "detective fiction", "detective and mystery"),
+    "Thriller" to listOf("thriller", "suspense", "psychological fiction"),
+    "Romance" to listOf("romance", "love stories"),
+    "Horror" to listOf("horror", "ghost stories"),
+    "Biography" to listOf("biography", "biographical"),
+    "Memoir" to listOf("memoir", "autobiography"),
+    "Business" to listOf("business", "entrepreneurship"),
+    "Philosophy" to listOf("philosophy"),
+    "Humor" to listOf("humor", "humour", "comedy"),
+    "Classics" to listOf("classic fiction", "classics"),
+    "Adventure" to listOf("adventure"),
+    "Crime" to listOf("crime", "criminal fiction"),
+    "History" to listOf("history"),
+    "Science" to listOf("popular science", "science"),
+    "Politics" to listOf("politics", "political science"),
+    "Religion & Spirituality" to listOf("spirituality", "religion"),
+    "Nonfiction" to listOf("nonfiction", "non fiction"),
+)
+
+internal fun normalizeAudiobookGenres(values: List<String>): List<String> = values.mapNotNull { value ->
+    val normalized = value.lowercase()
+        .replace(Regex("[^a-z0-9]+"), " ")
+        .trim()
+    GENRE_ALIASES.firstOrNull { (_, aliases) -> aliases.any(normalized::contains) }?.first
+}.distinct()
 
 data class PlaybackSnapshot(
     val bookId: String = "",

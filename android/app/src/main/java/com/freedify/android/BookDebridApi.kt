@@ -44,9 +44,9 @@ class BookDebridApi {
                     goodreads?.optString("description").orEmpty()
                 }
             },
-            genres = ((metadata?.optJSONArray("genres")?.let { array ->
+            genres = normalizeAudiobookGenres((metadata?.optJSONArray("genres")?.let { array ->
                 (0 until array.length()).map { array.optString(it) }
-            } ?: emptyList()) + book.genres).filter(String::isNotBlank).distinct(),
+            } ?: emptyList()) + book.genres),
             rating = goodreads?.number("rating") ?: book.rating,
             ratingsCount = goodreads?.flexibleLong("ratings_count")
                 ?: goodreads?.flexibleLong("rating_count") ?: book.ratingsCount,

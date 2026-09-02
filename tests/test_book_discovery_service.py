@@ -66,10 +66,23 @@ class BookDiscoveryTests(unittest.IsolatedAsyncioTestCase):
     def test_genres_prefer_useful_shelves_and_remove_noise(self):
         genres = select_discovery_genres([
             "Fiction", "Science Fiction", "Fantasy fiction", "Large type books",
-            "1990-1999", "Science Fiction", "Very " * 20
+            "1990-1999", "Science Fiction", "English literature", "Very " * 20
         ])
 
-        self.assertEqual(genres, ["Science Fiction", "Fantasy fiction", "Fiction"])
+        self.assertEqual(genres, ["Science Fiction", "Fantasy"])
+
+    def test_genres_are_canonical_and_drop_catalog_subjects(self):
+        genres = select_discovery_genres([
+            "English literature",
+            "Suspense fiction",
+            "Detective and mystery stories",
+            "Translations into French",
+            "Personal development",
+            "Full cast recording",
+            "Dramatized audio drama",
+        ])
+
+        self.assertEqual(genres, ["Full Cast", "Self-Help", "Mystery"])
 
     async def test_discovery_excludes_seed_and_deduplicates_related_works(self):
         with patch("app.book_discovery_service.httpx.AsyncClient", FakeClient, create=True), \

@@ -138,31 +138,9 @@ enum class AppDestination { HOME, SEARCH, LIBRARY, SETTINGS }
 enum class AudiobookSearchMode(val label: String, val fieldLabel: String) {
     TITLE("Title", "Book title"),
     AUTHOR("Author", "Author name"),
-    GENRE("Genre", "Genre, e.g. psychological thriller"),
+    GENRE("Genre", "Genre or format, e.g. thriller or full cast"),
     URL("URL", "AudiobookBay book URL"),
 }
-
-private val AUDIOBOOK_GENRES = listOf(
-    "Biography & Memoir",
-    "Business",
-    "Classics",
-    "Crime",
-    "Fantasy",
-    "Historical Fiction",
-    "History",
-    "Horror",
-    "Humor",
-    "Mystery",
-    "Nonfiction",
-    "Personal Development",
-    "Philosophy",
-    "Romance",
-    "Science",
-    "Science Fiction",
-    "Thriller",
-    "True Crime",
-    "Young Adult",
-)
 
 data class NativeUiState(
     val hasApiKey: Boolean = false,
@@ -628,13 +606,13 @@ private fun SearchScreen(state: NativeUiState, model: BookDebridViewModel) {
         )
         if (state.searchMode == AudiobookSearchMode.GENRE) {
             val typedGenre = state.searchQuery.trim()
-            val suggestions = AUDIOBOOK_GENRES
+            val suggestions = CANONICAL_AUDIOBOOK_GENRES
                 .filter { typedGenre.isBlank() || it.contains(typedGenre, ignoreCase = true) }
                 .sortedBy { !it.startsWith(typedGenre, ignoreCase = true) }
                 .take(8)
             if (suggestions.isNotEmpty()) {
                 Text(
-                    "Genre suggestions",
+                    "Genre & format suggestions",
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 10.dp),

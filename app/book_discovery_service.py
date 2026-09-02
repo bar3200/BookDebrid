@@ -19,34 +19,38 @@ DISCOVERY_CACHE_TTL = 60 * 60 * 6
 
 _cache: dict[str, tuple[float, dict[str, Any]]] = {}
 
-# Prefer useful shelves over catalog noise such as locations, eras, and generic
-# terms. Earlier entries win when Open Library returns many subjects.
-GENRE_PRIORITY = {
-    "fantasy": 100,
-    "science fiction": 100,
-    "fantasy fiction": 98,
-    "mystery": 95,
-    "thriller": 95,
-    "romance": 90,
-    "horror": 90,
-    "historical fiction": 90,
-    "young adult": 85,
-    "crime": 85,
-    "adventure": 80,
-    "biography": 80,
-    "memoir": 80,
-    "history": 75,
-    "nonfiction": 70,
-    "fiction": 20,
-}
-GENRE_NOISE = (
-    "accessible book",
-    "large type",
-    "protected daisy",
-    "translations into",
-    "reading level",
-    "open library staff picks",
+# Open Library subjects are catalog labels, not a genre taxonomy. Keep only
+# reader-facing shelves and collapse common aliases to one stable display name.
+# More specific aliases must precede broader ones (True Crime before Crime).
+GENRE_ALIASES = (
+    ("Full Cast", ("full cast",)),
+    ("Historical Fiction", ("historical fiction", "historical novel")),
+    ("Science Fiction", ("science fiction", "sci fi", "space opera")),
+    ("Literary Fiction", ("literary fiction",)),
+    ("Contemporary Fiction", ("contemporary fiction",)),
+    ("Young Adult", ("young adult", "ya fiction")),
+    ("True Crime", ("true crime",)),
+    ("Self-Help", ("self help", "personal development")),
+    ("Fantasy", ("fantasy",)),
+    ("Mystery", ("mystery", "detective fiction", "detective and mystery")),
+    ("Thriller", ("thriller", "suspense", "psychological fiction")),
+    ("Romance", ("romance", "love stories")),
+    ("Horror", ("horror", "ghost stories")),
+    ("Biography", ("biography", "biographical")),
+    ("Memoir", ("memoir", "autobiography")),
+    ("Business", ("business", "entrepreneurship")),
+    ("Philosophy", ("philosophy",)),
+    ("Humor", ("humor", "humour", "comedy")),
+    ("Classics", ("classic fiction", "classics")),
+    ("Adventure", ("adventure",)),
+    ("Crime", ("crime", "criminal fiction")),
+    ("History", ("history",)),
+    ("Science", ("popular science", "science")),
+    ("Politics", ("politics", "political science")),
+    ("Religion & Spirituality", ("spirituality", "religion")),
+    ("Nonfiction", ("nonfiction", "non fiction")),
 )
+GENRE_PRIORITY = {name: len(GENRE_ALIASES) - index for index, (name, _) in enumerate(GENRE_ALIASES)}
 
 
 def _normalize(value: str) -> str:
@@ -59,25 +63,18 @@ def select_discovery_genres(subjects: list[str], limit: int = 3) -> list[str]:
     for subject in subjects:
         clean = " ".join(str(subject).replace("_", " ").split()).strip(" ,.;")
         normalized = _normalize(clean)
-        if not normalized or len(clean) > 40 or normalized in unique:
+        if not normalized or len(clean) > 60 or any(char.isdigit() for char in clean):
             continue
-        if any(char.isdigit() for char in clean):
-            continue
-        if any(noise in normalized for noise in GENRE_NOISE):
-            continue
-        unique[normalized] = clean
-
-    def priority(normalized: str) -> int:
-        if normalized in GENRE_PRIORITY:
-            return GENRE_PRIORITY[normalized]
-        for genre, score in GENRE_PRIORITY.items():
-            if genre != "fiction" and genre in normalized:
-                return score - 2
-        return 50
+        canonical = next(
+            (name for name, aliases in GENRE_ALIASES if any(alias in normalized for alias in aliases)),
+            None,
+        )
+        if canonical:
+            unique.setdefault(canonical.lower(), canonical)
 
     ranked = sorted(
         unique.items(),
-        key=lambda item: (-priority(item[0]), len(item[1]), item[1].lower()),
+        key=lambda item: (-GENRE_PRIORITY[item[1]], item[1].lower()),
     )
     return [display for _, display in ranked[:limit]]
 

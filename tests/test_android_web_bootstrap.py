@@ -176,10 +176,16 @@ class AndroidWebBootstrapTests(unittest.TestCase):
 
     def test_native_genre_search_has_live_autocomplete(self):
         activity = (ROOT / "android/app/src/main/java/com/freedify/android/NativeMainActivity.kt").read_text(encoding="utf-8")
+        models = (ROOT / "android/app/src/main/java/com/freedify/android/AudiobookModels.kt").read_text(encoding="utf-8")
 
-        self.assertIn("private val AUDIOBOOK_GENRES", activity)
-        self.assertIn('"Science Fiction"', activity)
-        self.assertIn('"Genre suggestions"', activity)
+        self.assertIn("CANONICAL_AUDIOBOOK_GENRES", activity)
+        self.assertIn("internal val CANONICAL_AUDIOBOOK_GENRES", models)
+        self.assertIn('"Science Fiction"', models)
+        self.assertIn('"Suspense"'.lower(), models.lower())
+        self.assertNotIn('"English literature"', models)
+        self.assertIn("normalizeAudiobookGenres", models)
+        self.assertIn('"Full Cast"', models)
+        self.assertIn('"Genre & format suggestions"', activity)
         self.assertIn("it.contains(typedGenre, ignoreCase = true)", activity)
         self.assertIn("model.setSearchQuery(genre)", activity)
 

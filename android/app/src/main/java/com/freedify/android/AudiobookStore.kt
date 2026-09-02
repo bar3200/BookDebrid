@@ -95,9 +95,9 @@ class AudiobookStore private constructor(context: Context) {
                 author = old.optString("artist", "Unknown author"),
                 coverUrl = old.optString("artwork"),
                 description = old.optString("description"),
-                genres = old.optJSONArray("genres").let { genres ->
+                genres = normalizeAudiobookGenres(old.optJSONArray("genres").let { genres ->
                     if (genres == null) emptyList() else (0 until genres.length()).map { genres.optString(it) }
-                },
+                }),
                 debridId = old.optString("debrid_id").takeIf(String::isNotBlank),
                 chapters = chapters,
                 addedAt = old.optLong("addedAt", System.currentTimeMillis()),
